@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from zoneinfo import ZoneInfo
 
@@ -16,11 +17,20 @@ def sheets_webhook_ready() -> bool:
     return bool(settings.ENABLE_SHEETS_WEBHOOK and _normalize_webhook_url())
 
 
+def sheets_any_ready() -> bool:
+    if not settings.ENABLE_SHEETS_WEBHOOK:
+        return False
+    if sheets_webhook_ready():
+        return True
+    from app.services.sheets_direct import direct_sheets_ready
+
+    return direct_sheets_ready(settings)
+
+
 def _normalize_webhook_url() -> str:
     url = (settings.GOOGLE_SHEETS_WEBHOOK_URL or "").strip()
     if not url:
         return ""
-    # Google Apps Script must use the /exec deployment URL
     if "/dev" in url:
         url = url.replace("/dev", "/exec")
     return url
@@ -63,7 +73,7 @@ def _line_fields(items: list) -> tuple[str, str, str]:
     return _slash_join(names), _slash_join(skus), _slash_join(quantities)
 
 
-def _build_sheet_payload(order) -> dict:
+def build_sheet_payload(order) -> dict:
     items = order.items if isinstance(order.items, list) else []
     product, sku, quantity = _line_fields(items)
 
@@ -80,6 +90,10 @@ def _build_sheet_payload(order) -> dict:
         "currency": order.currency or "MAD",
         "status": "",
     }
+
+
+# Backwards-compatible alias
+_build_sheet_payload = build_sheet_payload
 
 
 def _parse_apps_script_response(response: httpx.Response) -> dict:
@@ -120,20 +134,8 @@ async def _post_to_sheets(payload: dict) -> dict:
         return _parse_apps_script_response(response)
 
 
-async def send_order_to_sheets(order, event_type: str = "ORDER_CREATED") -> bool:
-    del event_type
-    url = _normalize_webhook_url()
-    if not settings.ENABLE_SHEETS_WEBHOOK:
-        logger.warning("Sheets webhook disabled (ENABLE_SHEETS_WEBHOOK=false).")
-        return False
-    if not url:
-        logger.warning(
-            "GOOGLE_SHEETS_WEBHOOK_URL is empty — order %s saved to DB only.",
-            order.order_code,
-        )
-        return False
-
-    payload = _build_sheet_payload(order)
+async def _send_via_webhook(order) -> bool:
+    payload = build_sheet_payload(order)
     try:
         result = await _post_to_sheets(payload)
         logger.info("Sheets webhook success for %s: %s", order.order_code, result)
@@ -141,3 +143,28 @@ async def send_order_to_sheets(order, event_type: str = "ORDER_CREATED") -> bool
     except Exception as exc:
         logger.error("Sheets webhook failed for %s: %s", order.order_code, exc)
         return False
+
+
+async def send_order_to_sheets(order, event_type: str = "ORDER_CREATED") -> bool:
+    del event_type
+    if not settings.ENABLE_SHEETS_WEBHOOK:
+        logger.warning("Sheets disabled (ENABLE_SHEETS_WEBHOOK=false).")
+        return False
+
+    if _normalize_webhook_url():
+        if await _send_via_webhook(order):
+            return True
+        logger.warning("Webhook failed for %s — trying Sheets API fallback.", order.order_code)
+
+    from app.services.sheets_direct import append_order_row_sync, direct_sheets_ready
+
+    if direct_sheets_ready(settings):
+        return await asyncio.to_thread(append_order_row_sync, order, settings)
+
+    if not _normalize_webhook_url() and not direct_sheets_ready(settings):
+        logger.warning(
+            "Sheets not configured for %s — set GOOGLE_SHEETS_WEBHOOK_URL or "
+            "GOOGLE_SERVICE_ACCOUNT_JSON + GOOGLE_SHEET_ID in Easypanel.",
+            order.order_code,
+        )
+    return False

@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     RUN_MIGRATIONS_ON_START: bool = False
 
     GOOGLE_SHEETS_WEBHOOK_URL: str = ""
+    # Direct Sheets API (fallback if webhook URL empty) — share sheet with service account email
+    GOOGLE_SHEET_ID: str = "1Dypu_WkwyH2VXI94nOg4urxby20ktNMu2Od5wulRvRs"
+    GOOGLE_SERVICE_ACCOUNT_JSON: str = ""
 
     META_PIXEL_ID: str = ""
     META_ACCESS_TOKEN: str = ""

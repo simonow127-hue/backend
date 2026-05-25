@@ -39,6 +39,14 @@ After a test order, check DB `orders.status`:
 
 Google Sheet: redeploy Apps Script after updating `docs/google-apps-script-webhook.js` (writes to **first tab** by default).
 
+### Option B — Direct API (no Apps Script, recommended)
+
+1. Save Google service-account JSON as `backend/secrets/riads-sheets.json`
+2. Run: `powershell -File backend/scripts/setup-google-sheets.ps1`
+3. Copy the printed env vars into Easypanel → Redeploy
+4. Share the sheet with the service account email (Editor)
+5. Test: `POST https://api.riads.shop/health/sheets-test`
+
 ## Local run
 
 ```bash
