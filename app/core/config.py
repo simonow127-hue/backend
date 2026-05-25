@@ -15,7 +15,6 @@ class Settings(BaseSettings):
     RUN_MIGRATIONS_ON_START: bool = False
 
     GOOGLE_SHEETS_WEBHOOK_URL: str = ""
-    GOOGLE_SHEETS_WEBHOOK_SECRET: str = ""
 
     META_PIXEL_ID: str = ""
     META_ACCESS_TOKEN: str = ""

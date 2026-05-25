@@ -26,18 +26,11 @@ UPSELL_PRICES = {
     3: 349,
 }
 
-PRODUCT_NAMES = {
-    "jadr": "سيروم جدر",
-    "nour": "سيروم نور",
-    "naqaa": "رول اون نقاء",
-}
-
-
 def _generate_order_code() -> str:
     now = datetime.now(timezone.utc)
     date_str = now.strftime("%Y%m%d")
-    short_id = uuid.uuid4().hex[:4].upper()
-    return f"RIADS-{date_str}-{short_id}"
+    short_id = uuid.uuid4().hex[:4].lower()
+    return f"riads-{date_str}-{short_id}"
 
 
 def _compute_upsell(items: list) -> dict | None:
