@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from zoneinfo import ZoneInfo
 
@@ -7,24 +6,27 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 
 from app.catalog.products import catalog_entry
 from app.core.config import settings
+from app.services import sheets_direct
 
 logger = logging.getLogger("riads.sheets")
 
 _CASABLANCA = ZoneInfo("Africa/Casablanca")
 
 
+def sheets_delivery_mode() -> str:
+    if sheets_direct.direct_sheets_ready():
+        return "direct"
+    if sheets_webhook_ready():
+        return "webhook"
+    return "none"
+
+
+def sheets_configured() -> bool:
+    return sheets_delivery_mode() != "none"
+
+
 def sheets_webhook_ready() -> bool:
     return bool(settings.ENABLE_SHEETS_WEBHOOK and _normalize_webhook_url())
-
-
-def sheets_any_ready() -> bool:
-    if not settings.ENABLE_SHEETS_WEBHOOK:
-        return False
-    if sheets_webhook_ready():
-        return True
-    from app.services.sheets_direct import direct_sheets_ready
-
-    return direct_sheets_ready(settings)
 
 
 def _normalize_webhook_url() -> str:
@@ -92,10 +94,6 @@ def build_sheet_payload(order) -> dict:
     }
 
 
-# Backwards-compatible alias
-_build_sheet_payload = build_sheet_payload
-
-
 def _parse_apps_script_response(response: httpx.Response) -> dict:
     text = (response.text or "").strip()
     if not text:
@@ -116,7 +114,7 @@ def _parse_apps_script_response(response: httpx.Response) -> dict:
     retry=retry_if_exception_type(httpx.HTTPError),
     reraise=True,
 )
-async def _post_to_sheets(payload: dict) -> dict:
+async def _post_to_webhook(payload: dict) -> dict:
     url = _normalize_webhook_url()
     async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
         response = await client.post(
@@ -126,23 +124,12 @@ async def _post_to_sheets(payload: dict) -> dict:
         )
         if response.status_code >= 400:
             logger.error(
-                "Sheets HTTP %s body=%s",
+                "Sheets webhook HTTP %s body=%s",
                 response.status_code,
                 (response.text or "")[:500],
             )
         response.raise_for_status()
         return _parse_apps_script_response(response)
-
-
-async def _send_via_webhook(order) -> bool:
-    payload = build_sheet_payload(order)
-    try:
-        result = await _post_to_sheets(payload)
-        logger.info("Sheets webhook success for %s: %s", order.order_code, result)
-        return True
-    except Exception as exc:
-        logger.error("Sheets webhook failed for %s: %s", order.order_code, exc)
-        return False
 
 
 async def send_order_to_sheets(order, event_type: str = "ORDER_CREATED") -> bool:
@@ -151,20 +138,24 @@ async def send_order_to_sheets(order, event_type: str = "ORDER_CREATED") -> bool
         logger.warning("Sheets disabled (ENABLE_SHEETS_WEBHOOK=false).")
         return False
 
-    if _normalize_webhook_url():
-        if await _send_via_webhook(order):
-            return True
-        logger.warning("Webhook failed for %s — trying Sheets API fallback.", order.order_code)
+    payload = build_sheet_payload(order)
+    mode = sheets_delivery_mode()
 
-    from app.services.sheets_direct import append_order_row_sync, direct_sheets_ready
-
-    if direct_sheets_ready(settings):
-        return await asyncio.to_thread(append_order_row_sync, order, settings)
-
-    if not _normalize_webhook_url() and not direct_sheets_ready(settings):
+    if mode == "none":
         logger.warning(
-            "Sheets not configured for %s — set GOOGLE_SHEETS_WEBHOOK_URL or "
-            "GOOGLE_SERVICE_ACCOUNT_JSON + GOOGLE_SHEET_ID in Easypanel.",
+            "No Google Sheets config — order %s in DB only. "
+            "Set GOOGLE_SERVICE_ACCOUNT_JSON_B64 or GOOGLE_SHEETS_WEBHOOK_URL.",
             order.order_code,
         )
-    return False
+        return False
+
+    if mode == "direct":
+        return await sheets_direct.append_order_row(payload)
+
+    try:
+        result = await _post_to_webhook(payload)
+        logger.info("Sheets webhook success for %s: %s", order.order_code, result)
+        return True
+    except Exception as exc:
+        logger.error("Sheets webhook failed for %s: %s", order.order_code, exc)
+        return False

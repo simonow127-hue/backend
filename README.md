@@ -24,13 +24,14 @@ DATABASE_URL=postgres://riads:riads@riads_database:5432/riads?sslmode=disable
 RUN_MIGRATIONS_ON_START=true
 FRONTEND_URL=https://riads.shop
 CORS_ORIGINS=https://riads.shop,https://www.riads.shop
-GOOGLE_SHEETS_WEBHOOK_URL=<your Apps Script URL>
+GOOGLE_SERVICE_ACCOUNT_JSON_B64=<from scripts/encode-service-account.py>
+GOOGLE_SHEETS_SPREADSHEET_ID=1Dypu_WkwyH2VXI94nOg4urxby20ktNMu2Od5wulRvRs
 ENABLE_SHEETS_WEBHOOK=true
 ```
 
-Health check URL: `https://api.riads.shop/health`
+Or use Apps Script: `GOOGLE_SHEETS_WEBHOOK_URL=...` (see `docs/google-sheets-setup.md`).
 
-Response must include `"sheets_webhook_configured": true`. If `false`, add `GOOGLE_SHEETS_WEBHOOK_URL` (Apps Script URL ending in `/exec`) and redeploy.
+Health: `https://api.riads.shop/health` → `"sheets_mode": "direct"` or `"webhook"`, `"sheets_configured": true`.
 
 After a test order, check DB `orders.status`:
 - `sent_to_sheet` — row reached Google Sheets
@@ -38,14 +39,6 @@ After a test order, check DB `orders.status`:
 - `new` — webhook never ran (old deploy) or URL empty
 
 Google Sheet: redeploy Apps Script after updating `docs/google-apps-script-webhook.js` (writes to **first tab** by default).
-
-### Option B — Direct API (no Apps Script, recommended)
-
-1. Save Google service-account JSON as `backend/secrets/riads-sheets.json`
-2. Run: `powershell -File backend/scripts/setup-google-sheets.ps1`
-3. Copy the printed env vars into Easypanel → Redeploy
-4. Share the sheet with the service account email (Editor)
-5. Test: `POST https://api.riads.shop/health/sheets-test`
 
 ## Local run
 
