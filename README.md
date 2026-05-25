@@ -30,6 +30,15 @@ ENABLE_SHEETS_WEBHOOK=true
 
 Health check URL: `https://api.riads.shop/health`
 
+Response must include `"sheets_webhook_configured": true`. If `false`, add `GOOGLE_SHEETS_WEBHOOK_URL` (Apps Script URL ending in `/exec`) and redeploy.
+
+After a test order, check DB `orders.status`:
+- `sent_to_sheet` — row reached Google Sheets
+- `sheet_failed` — URL wrong, script not deployed, or script error (see backend logs)
+- `new` — webhook never ran (old deploy) or URL empty
+
+Google Sheet: redeploy Apps Script after updating `docs/google-apps-script-webhook.js` (writes to **first tab** by default).
+
 ## Local run
 
 ```bash

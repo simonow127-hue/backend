@@ -101,37 +101,67 @@ async def create_order(
     await db.refresh(order)
 
     logger.info("Order created: %s", order.order_code)
-
-    # Fire async side effects without blocking response
-    asyncio.create_task(_run_side_effects(order))
-
     return order
 
 
-async def _run_side_effects(order: Order) -> None:
+async def _load_order(order_id: uuid.UUID) -> Order | None:
+    from app.core.database import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        return await db.get(Order, order_id)
+
+
+async def _update_sheet_status(order_id: uuid.UUID, *, sent: bool) -> None:
+    from app.core.database import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        order_obj = await db.get(Order, order_id)
+        if not order_obj:
+            return
+        if sent:
+            order_obj.sheet_sent_at = datetime.now(timezone.utc)
+            order_obj.status = "sent_to_sheet"
+        elif order_obj.status == "new":
+            order_obj.status = "sheet_failed"
+        await db.commit()
+
+
+async def run_order_side_effects(order_id: uuid.UUID) -> None:
+    """Background job: reload order from DB, then Sheets + CAPI."""
+    order = await _load_order(order_id)
+    if not order:
+        logger.error("Side effects skipped — order %s not found", order_id)
+        return
+
     source = order.source or {}
     landing_url = source.get("landing_url") or settings.FRONTEND_URL
     thank_you_url = f"{settings.FRONTEND_URL}/thank-you"
 
-    results = await asyncio.gather(
-        sheets_service.send_order_to_sheets(order),
-        meta_capi.send_purchase_event(order, event_source_url=landing_url),
-        tiktok_events.send_purchase_event(order, page_url=thank_you_url, referrer=landing_url),
-        snapchat_capi.send_purchase_event(order, event_source_url=thank_you_url),
-        return_exceptions=True,
-    )
+    try:
+        results = await asyncio.gather(
+            sheets_service.send_order_to_sheets(order),
+            meta_capi.send_purchase_event(order, event_source_url=landing_url),
+            tiktok_events.send_purchase_event(order, page_url=thank_you_url, referrer=landing_url),
+            snapchat_capi.send_purchase_event(order, event_source_url=thank_you_url),
+            return_exceptions=True,
+        )
+    except Exception:
+        logger.exception("Side effects crashed for order %s", order.order_code)
+        await _update_sheet_status(order_id, sent=False)
+        return
 
-    sheets_ok = results[0]
-    if sheets_ok and not isinstance(sheets_ok, Exception):
-        from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-        from app.core.database import AsyncSessionLocal
-        from datetime import datetime, timezone
-        async with AsyncSessionLocal() as db:
-            order_obj = await db.get(Order, order.id)
-            if order_obj:
-                order_obj.sheet_sent_at = datetime.now(timezone.utc)
-                order_obj.status = "sent_to_sheet"
-                await db.commit()
+    sheets_ok = results[0] is True
+    await _update_sheet_status(order_id, sent=sheets_ok)
+
+
+async def run_sheet_sync_only(order_id: uuid.UUID) -> bool:
+    """Send one order to Google Sheets (retry / upsell)."""
+    order = await _load_order(order_id)
+    if not order:
+        return False
+    ok = await sheets_service.send_order_to_sheets(order)
+    await _update_sheet_status(order_id, sent=ok)
+    return ok
 
 
 async def apply_upsell(
@@ -163,6 +193,4 @@ async def apply_upsell(
     await db.refresh(order)
 
     logger.info("Upsell applied to order %s, new total: %s", order.order_code, order.total_mad)
-    asyncio.create_task(sheets_service.send_order_to_sheets(order, event_type="ORDER_UPDATED"))
-
     return order

@@ -9,7 +9,14 @@ class Settings(BaseSettings):
     APP_NAME: str = "riads-api"
     API_BASE_URL: str = "http://localhost:8000"
     FRONTEND_URL: str = "http://localhost:3000"
-    CORS_ORIGINS: str = "http://localhost:3000"
+    CORS_ORIGINS: str = (
+        "http://localhost:3000,"
+        "http://localhost:3001,"
+        "http://localhost:3004,"
+        "http://127.0.0.1:3000,"
+        "http://127.0.0.1:3001,"
+        "http://127.0.0.1:3004"
+    )
 
     DATABASE_URL: str = "postgresql+asyncpg://riads:riads@localhost:5432/riads"
     RUN_MIGRATIONS_ON_START: bool = False

@@ -12,6 +12,20 @@ logger = logging.getLogger("riads.sheets")
 _CASABLANCA = ZoneInfo("Africa/Casablanca")
 
 
+def sheets_webhook_ready() -> bool:
+    return bool(settings.ENABLE_SHEETS_WEBHOOK and _normalize_webhook_url())
+
+
+def _normalize_webhook_url() -> str:
+    url = (settings.GOOGLE_SHEETS_WEBHOOK_URL or "").strip()
+    if not url:
+        return ""
+    # Google Apps Script must use the /exec deployment URL
+    if "/dev" in url:
+        url = url.replace("/dev", "/exec")
+    return url
+
+
 def _format_sheet_date(created_at) -> str:
     if not created_at:
         from datetime import datetime, timezone
@@ -68,6 +82,20 @@ def _build_sheet_payload(order) -> dict:
     }
 
 
+def _parse_apps_script_response(response: httpx.Response) -> dict:
+    text = (response.text or "").strip()
+    if not text:
+        return {"ok": response.is_success}
+    try:
+        return response.json()
+    except Exception:
+        if text.startswith("{"):
+            import json
+
+            return json.loads(text)
+        return {"ok": response.is_success, "raw": text[:500]}
+
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -75,16 +103,34 @@ def _build_sheet_payload(order) -> dict:
     reraise=True,
 )
 async def _post_to_sheets(payload: dict) -> dict:
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        response = await client.post(settings.GOOGLE_SHEETS_WEBHOOK_URL, json=payload)
+    url = _normalize_webhook_url()
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        response = await client.post(
+            url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        if response.status_code >= 400:
+            logger.error(
+                "Sheets HTTP %s body=%s",
+                response.status_code,
+                (response.text or "")[:500],
+            )
         response.raise_for_status()
-        return response.json()
+        return _parse_apps_script_response(response)
 
 
 async def send_order_to_sheets(order, event_type: str = "ORDER_CREATED") -> bool:
-    del event_type  # kept for callers; sheet always receives one flat row
-    if not settings.ENABLE_SHEETS_WEBHOOK or not settings.GOOGLE_SHEETS_WEBHOOK_URL:
-        logger.info("Sheets webhook disabled or not configured — skipping.")
+    del event_type
+    url = _normalize_webhook_url()
+    if not settings.ENABLE_SHEETS_WEBHOOK:
+        logger.warning("Sheets webhook disabled (ENABLE_SHEETS_WEBHOOK=false).")
+        return False
+    if not url:
+        logger.warning(
+            "GOOGLE_SHEETS_WEBHOOK_URL is empty — order %s saved to DB only.",
+            order.order_code,
+        )
         return False
 
     payload = _build_sheet_payload(order)

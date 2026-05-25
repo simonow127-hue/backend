@@ -1,6 +1,7 @@
 import logging
+import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -12,7 +13,13 @@ from app.schemas.order import (
     UpsellRecommendation,
 )
 from app.services.geoip import check_ip
-from app.services.orders import _compute_upsell, apply_upsell, create_order
+from app.services.orders import (
+    _compute_upsell,
+    apply_upsell,
+    create_order,
+    run_order_side_effects,
+    run_sheet_sync_only,
+)
 
 logger = logging.getLogger("riads.api.orders")
 router = APIRouter()
@@ -40,6 +47,7 @@ def _extract_client_ip(request: Request) -> str | None:
 async def post_order(
     payload: CreateOrderRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     client_ip = _extract_client_ip(request)
@@ -63,6 +71,7 @@ async def post_order(
         )
 
     order = await create_order(db, payload, client_ip, user_agent)
+    background_tasks.add_task(run_order_side_effects, order.id)
     items_data = order.items if isinstance(order.items, list) else []
     upsell_data = _compute_upsell(items_data)
 
@@ -76,13 +85,37 @@ async def post_order(
     )
 
 
+@router.post("/orders/{order_id}/sync-sheet")
+async def sync_order_to_sheet(
+    order_id: str,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """Retry Google Sheets for an existing order (e.g. after fixing webhook URL)."""
+    try:
+        oid = uuid.UUID(order_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"code": "invalid_order_id"}) from exc
+
+    from app.models.order import Order
+
+    order = await db.get(Order, oid)
+    if not order:
+        raise HTTPException(status_code=404, detail={"code": "order_not_found"})
+
+    background_tasks.add_task(run_sheet_sync_only, oid)
+    return {"ok": True, "order_code": order.order_code, "message": "Sheet sync queued"}
+
+
 @router.patch("/orders/{order_id}/upsell", response_model=UpsellOrderResponse)
 async def patch_order_upsell(
     order_id: str,
     payload: UpsellOrderRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     order = await apply_upsell(db, order_id, payload.item)
+    background_tasks.add_task(run_sheet_sync_only, order.id)
     return UpsellOrderResponse(
         ok=True,
         order_id=str(order.id),
