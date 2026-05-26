@@ -159,7 +159,7 @@ async def run_sheet_sync_only(order_id: uuid.UUID) -> bool:
     order = await _load_order(order_id)
     if not order:
         return False
-    ok = await sheets_service.send_order_to_sheets(order)
+    ok = await sheets_service.send_order_to_sheets(order, force=True)
     await _update_sheet_status(order_id, sent=ok)
     return ok
 

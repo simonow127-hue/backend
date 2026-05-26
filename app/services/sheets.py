@@ -2,8 +2,6 @@ import logging
 from zoneinfo import ZoneInfo
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-
 from app.catalog.products import catalog_entry
 from app.core.config import settings
 from app.services import sheets_direct
@@ -108,12 +106,6 @@ def _parse_apps_script_response(response: httpx.Response) -> dict:
         return {"ok": response.is_success, "raw": text[:500]}
 
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=10),
-    retry=retry_if_exception_type(httpx.HTTPError),
-    reraise=True,
-)
 async def _post_to_webhook(payload: dict) -> dict:
     url = _normalize_webhook_url()
     async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
@@ -132,8 +124,13 @@ async def _post_to_webhook(payload: dict) -> dict:
         return _parse_apps_script_response(response)
 
 
-async def send_order_to_sheets(order, event_type: str = "ORDER_CREATED") -> bool:
+async def send_order_to_sheets(
+    order, event_type: str = "ORDER_CREATED", *, force: bool = False
+) -> bool:
     del event_type
+    if not force and getattr(order, "sheet_sent_at", None):
+        logger.info("Sheets already sent for %s — skipping backend duplicate.", order.order_code)
+        return True
     if not settings.ENABLE_SHEETS_WEBHOOK:
         logger.warning("Sheets disabled (ENABLE_SHEETS_WEBHOOK=false).")
         return False
