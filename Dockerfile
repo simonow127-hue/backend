@@ -1,4 +1,7 @@
 FROM python:3.12-slim
+# Bump to force Easypanel rebuild when pulling main
+ARG APP_BUILD_ID=20260526-sheets-v2
+LABEL build_id=$APP_BUILD_ID
 
 WORKDIR /app
 
