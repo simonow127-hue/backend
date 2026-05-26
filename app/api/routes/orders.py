@@ -16,9 +16,9 @@ from app.services.geoip import check_ip
 from app.services.orders import (
     _compute_upsell,
     apply_upsell,
+    claim_and_push_sheet,
     create_order,
     run_order_side_effects,
-    run_sheet_sync_only,
 )
 
 logger = logging.getLogger("riads.api.orders")
@@ -103,7 +103,7 @@ async def sync_order_to_sheet(
     if not order:
         raise HTTPException(status_code=404, detail={"code": "order_not_found"})
 
-    background_tasks.add_task(run_sheet_sync_only, oid)
+    background_tasks.add_task(claim_and_push_sheet, oid, True)
     return {"ok": True, "order_code": order.order_code, "message": "Sheet sync queued"}
 
 
@@ -115,7 +115,7 @@ async def patch_order_upsell(
     db: AsyncSession = Depends(get_db),
 ):
     order = await apply_upsell(db, order_id, payload.item)
-    background_tasks.add_task(run_sheet_sync_only, order.id)
+    background_tasks.add_task(claim_and_push_sheet, order.id, True)
     return UpsellOrderResponse(
         ok=True,
         order_id=str(order.id),

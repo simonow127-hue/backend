@@ -41,8 +41,6 @@ class Settings(BaseSettings):
     HASH_SALT_INTERNAL: str = ""
     ENABLE_CAPI: bool = True
     ENABLE_SHEETS_WEBHOOK: bool = True
-    # False = sheet writes only from the website (NEXT_PUBLIC_GOOGLE_SHEETS_WEBHOOK_URL). Stops duplicate rows.
-    SHEETS_BACKEND_SYNC: bool = False
     LOG_LEVEL: str = "INFO"
 
     # MaxMind GeoIP2 Insights — order fraud/geo guard

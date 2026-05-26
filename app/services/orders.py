@@ -3,9 +3,8 @@ import logging
 import asyncio
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import update
 from app.models.order import Order
-from app.models.analytics_event import AnalyticsEvent
 from app.schemas.order import CreateOrderRequest, UpsellItemPayload
 from app.services.phone import validate_and_normalize_moroccan_phone
 from app.services import sheets as sheets_service
@@ -26,6 +25,7 @@ UPSELL_PRICES = {
     3: 349,
 }
 
+
 def _generate_order_code() -> str:
     now = datetime.now(timezone.utc)
     date_str = now.strftime("%Y%m%d")
@@ -43,7 +43,6 @@ def _compute_upsell(items: list) -> dict | None:
                 "offer_pieces": 1,
                 "price_mad": UPSELL_PRICES[1],
             }
-    # All products present — upsell quantity upgrade
     return {
         "recommended_product_id": list(product_ids)[0],
         "offer_pieces": 2,
@@ -57,7 +56,6 @@ async def create_order(
     client_ip: str | None,
     user_agent: str | None,
 ) -> Order:
-    # Validate phone
     phone_result = validate_and_normalize_moroccan_phone(payload.customer.phone)
     if not phone_result["is_valid"]:
         from fastapi import HTTPException
@@ -111,57 +109,66 @@ async def _load_order(order_id: uuid.UUID) -> Order | None:
         return await db.get(Order, order_id)
 
 
-async def _update_sheet_status(order_id: uuid.UUID, *, sent: bool) -> None:
+async def claim_and_push_sheet(order_id: uuid.UUID, *, force: bool = False) -> bool:
+    """Exactly one sheet write per order (DB lock). Upsell uses force=True to update the row."""
     from app.core.database import AsyncSessionLocal
+
+    if not force:
+        async with AsyncSessionLocal() as db:
+            claimed = await db.execute(
+                update(Order)
+                .where(Order.id == order_id, Order.sheet_sent_at.is_(None))
+                .values(
+                    sheet_sent_at=datetime.now(timezone.utc),
+                    status="sending_to_sheet",
+                )
+            )
+            await db.commit()
+            if claimed.rowcount == 0:
+                logger.info("Sheet already claimed for order %s", order_id)
+                return True
+
+    order = await _load_order(order_id)
+    if not order:
+        return False
+
+    ok = await sheets_service.send_order_to_sheets(order, force=True)
 
     async with AsyncSessionLocal() as db:
         order_obj = await db.get(Order, order_id)
         if not order_obj:
-            return
-        if sent:
-            order_obj.sheet_sent_at = datetime.now(timezone.utc)
+            return ok
+        if ok:
             order_obj.status = "sent_to_sheet"
-        elif order_obj.status == "new":
+            if not order_obj.sheet_sent_at:
+                order_obj.sheet_sent_at = datetime.now(timezone.utc)
+        elif not force:
+            order_obj.sheet_sent_at = None
             order_obj.status = "sheet_failed"
         await db.commit()
 
+    return ok
+
 
 async def run_order_side_effects(order_id: uuid.UUID) -> None:
-    """Background job: reload order from DB, then Sheets + CAPI."""
+    """Sheets once (locked), then ad platform events."""
     order = await _load_order(order_id)
     if not order:
         logger.error("Side effects skipped — order %s not found", order_id)
         return
 
+    await claim_and_push_sheet(order_id)
+
     source = order.source or {}
     landing_url = source.get("landing_url") or settings.FRONTEND_URL
     thank_you_url = f"{settings.FRONTEND_URL}/thank-you"
 
-    try:
-        results = await asyncio.gather(
-            sheets_service.send_order_to_sheets(order),
-            meta_capi.send_purchase_event(order, event_source_url=landing_url),
-            tiktok_events.send_purchase_event(order, page_url=thank_you_url, referrer=landing_url),
-            snapchat_capi.send_purchase_event(order, event_source_url=thank_you_url),
-            return_exceptions=True,
-        )
-    except Exception:
-        logger.exception("Side effects crashed for order %s", order.order_code)
-        await _update_sheet_status(order_id, sent=False)
-        return
-
-    sheets_ok = results[0] is True
-    await _update_sheet_status(order_id, sent=sheets_ok)
-
-
-async def run_sheet_sync_only(order_id: uuid.UUID) -> bool:
-    """Send one order to Google Sheets (retry / upsell)."""
-    order = await _load_order(order_id)
-    if not order:
-        return False
-    ok = await sheets_service.send_order_to_sheets(order, force=True)
-    await _update_sheet_status(order_id, sent=ok)
-    return ok
+    await asyncio.gather(
+        meta_capi.send_purchase_event(order, event_source_url=landing_url),
+        tiktok_events.send_purchase_event(order, page_url=thank_you_url, referrer=landing_url),
+        snapchat_capi.send_purchase_event(order, event_source_url=thank_you_url),
+        return_exceptions=True,
+    )
 
 
 async def apply_upsell(

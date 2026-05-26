@@ -2,6 +2,7 @@ import logging
 from zoneinfo import ZoneInfo
 
 import httpx
+
 from app.catalog.products import catalog_entry
 from app.core.config import settings
 from app.services import sheets_direct
@@ -12,8 +13,6 @@ _CASABLANCA = ZoneInfo("Africa/Casablanca")
 
 
 def sheets_delivery_mode() -> str:
-    if not settings.SHEETS_BACKEND_SYNC:
-        return "client"
     if sheets_direct.direct_sheets_ready():
         return "direct"
     if sheets_webhook_ready():
@@ -22,9 +21,7 @@ def sheets_delivery_mode() -> str:
 
 
 def sheets_configured() -> bool:
-    if not settings.SHEETS_BACKEND_SYNC:
-        return True
-    return sheets_delivery_mode() not in ("none", "client")
+    return sheets_delivery_mode() != "none"
 
 
 def sheets_webhook_ready() -> bool:
@@ -128,16 +125,8 @@ async def _post_to_webhook(payload: dict) -> dict:
         return _parse_apps_script_response(response)
 
 
-async def send_order_to_sheets(
-    order, event_type: str = "ORDER_CREATED", *, force: bool = False
-) -> bool:
-    del event_type
-    if not settings.SHEETS_BACKEND_SYNC and not force:
-        logger.debug("Sheets via browser only — backend skip for %s", order.order_code)
-        return True
-    if not force and getattr(order, "sheet_sent_at", None):
-        logger.info("Sheets already sent for %s — skipping backend duplicate.", order.order_code)
-        return True
+async def send_order_to_sheets(order, event_type: str = "ORDER_CREATED", *, force: bool = False) -> bool:
+    del event_type, force
     if not settings.ENABLE_SHEETS_WEBHOOK:
         logger.warning("Sheets disabled (ENABLE_SHEETS_WEBHOOK=false).")
         return False
@@ -147,8 +136,7 @@ async def send_order_to_sheets(
 
     if mode == "none":
         logger.warning(
-            "No Google Sheets config — order %s in DB only. "
-            "Set GOOGLE_SERVICE_ACCOUNT_JSON_B64 or GOOGLE_SHEETS_WEBHOOK_URL.",
+            "No Google Sheets config — order %s in DB only. Set GOOGLE_SHEETS_WEBHOOK_URL on backend.",
             order.order_code,
         )
         return False
