@@ -25,7 +25,7 @@ RUN_MIGRATIONS_ON_START=true
 FRONTEND_URL=https://riads.shop
 CORS_ORIGINS=https://riads.shop,https://www.riads.shop
 GOOGLE_SERVICE_ACCOUNT_JSON_B64=<from scripts/encode-service-account.py>
-GOOGLE_SHEETS_SPREADSHEET_ID=1Dypu_WkwyH2VXI94nOg4urxby20ktNMu2Od5wulRvRs
+GOOGLE_SHEETS_SPREADSHEET_ID=1noCh6q_Q-G-fnFWUoPdiHJ7aVL-9r2BMdHTI2xrVl1I
 ENABLE_SHEETS_WEBHOOK=true
 ```
 

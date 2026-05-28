@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     RUN_MIGRATIONS_ON_START: bool = False
 
     GOOGLE_SHEETS_WEBHOOK_URL: str = ""
-    GOOGLE_SHEETS_SPREADSHEET_ID: str = "1Dypu_WkwyH2VXI94nOg4urxby20ktNMu2Od5wulRvRs"
+    GOOGLE_SHEETS_SPREADSHEET_ID: str = "1noCh6q_Q-G-fnFWUoPdiHJ7aVL-9r2BMdHTI2xrVl1I"
     # Option A (recommended): service account JSON — share the sheet with client_email as Editor
     GOOGLE_SERVICE_ACCOUNT_JSON: str = ""
     GOOGLE_SERVICE_ACCOUNT_JSON_B64: str = ""
@@ -52,6 +52,16 @@ class Settings(BaseSettings):
     BLOCK_TOR: bool = True
     BLOCK_HOSTING: bool = True
     GEO_FAIL_OPEN: bool = True  # if MaxMind unreachable, allow order (set False to block)
+
+    # IPQualityScore — secondary VPN/proxy check (optional)
+    IPQS_API_KEY: str = ""
+    IPQS_STRICTNESS: int = 1  # 0=loose, 1=medium, 2=strict
+
+    # Admin dashboard
+    ADMIN_USERNAME: str = ""
+    ADMIN_PASSWORD: str = ""
+    ADMIN_SESSION_SECRET: str = ""  # min 32 chars in production
+    ADMIN_TOKEN_TTL_HOURS: int = 24
 
     @property
     def cors_origins_list(self) -> List[str]:
