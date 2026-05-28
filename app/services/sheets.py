@@ -107,6 +107,14 @@ def _parse_apps_script_response(response: httpx.Response) -> dict:
         return {"ok": response.is_success, "raw": text[:500]}
 
 
+def _webhook_succeeded(result: dict, response: httpx.Response) -> bool:
+    if result.get("ok") is True:
+        return True
+    if response.is_success and not result.get("error"):
+        return True
+    return False
+
+
 async def _post_to_webhook(payload: dict) -> dict:
     url = _normalize_webhook_url()
     async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
@@ -115,14 +123,16 @@ async def _post_to_webhook(payload: dict) -> dict:
             json=payload,
             headers={"Content-Type": "application/json"},
         )
+        body_preview = (response.text or "")[:500]
         if response.status_code >= 400:
-            logger.error(
-                "Sheets webhook HTTP %s body=%s",
-                response.status_code,
-                (response.text or "")[:500],
-            )
+            logger.error("Sheets webhook HTTP %s body=%s", response.status_code, body_preview)
         response.raise_for_status()
-        return _parse_apps_script_response(response)
+        result = _parse_apps_script_response(response)
+        if not _webhook_succeeded(result, response):
+            raise httpx.HTTPError(
+                f"Sheets webhook bad response: {result!r} body={body_preview}"
+            )
+        return result
 
 
 async def send_order_to_sheets(order, event_type: str = "ORDER_CREATED", *, force: bool = False) -> bool:

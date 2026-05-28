@@ -132,7 +132,7 @@ async def claim_and_push_sheet(order_id: uuid.UUID, *, force: bool = False) -> b
     if not order:
         return False
 
-    ok = await sheets_service.send_order_to_sheets(order, force=True)
+    ok = await sheets_service.send_order_to_sheets(order)
 
     async with AsyncSessionLocal() as db:
         order_obj = await db.get(Order, order_id)
