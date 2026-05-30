@@ -42,7 +42,7 @@ async def sheets_test():
         "product": "Test product",
         "sku": "TEST-SKU",
         "quantity": "1",
-        "total_price": 199,
+        "total_price": 159,
         "currency": "MAD",
         "status": "",
     }
