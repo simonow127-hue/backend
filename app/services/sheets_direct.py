@@ -12,7 +12,7 @@ from app.core.config import settings
 logger = logging.getLogger("riads.sheets.direct")
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-SHEET_RANGE = "A:K"
+SHEET_RANGE = "A:H"
 
 
 def direct_sheets_ready() -> bool:
@@ -46,18 +46,18 @@ def _sheets_service():
 
 
 def payload_to_row(payload: dict) -> list:
+    orderid = payload.get("orderid", "")
+    product = payload.get("product", "")
+    note = f"{orderid} | {product}" if product else orderid
     return [
         payload.get("date", ""),
-        payload.get("orderid", ""),
-        payload.get("country", "Morocco"),
         payload.get("name", ""),
         payload.get("phone", ""),
-        payload.get("product", ""),
+        payload.get("country", "Morocco"),
         payload.get("sku", ""),
         payload.get("quantity", ""),
         payload.get("total_price", ""),
-        payload.get("currency", "MAD"),
-        payload.get("status", ""),
+        note,
     ]
 
 

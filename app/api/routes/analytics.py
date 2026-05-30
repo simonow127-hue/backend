@@ -1,11 +1,24 @@
 import uuid
+
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.database import get_db
-from app.schemas.analytics import AnalyticsEventRequest, AnalyticsEventResponse
 from app.models.analytics_event import AnalyticsEvent
+from app.schemas.analytics import AnalyticsEventRequest, AnalyticsEventResponse
+from app.services.geoip import evaluate_traffic_ip
 
 router = APIRouter()
+
+
+def _extract_client_ip(request: Request) -> str | None:
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip.strip()
+    return request.client.host if request.client else None
 
 
 @router.post("/analytics/events", response_model=AnalyticsEventResponse)
@@ -14,10 +27,10 @@ async def track_event(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    client_ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else None)
-    if client_ip:
-        client_ip = client_ip.split(",")[0].strip()
+    client_ip = _extract_client_ip(request)
     user_agent = request.headers.get("User-Agent")
+
+    geo = await evaluate_traffic_ip(client_ip, db)
 
     full_payload = {
         **(payload.payload or {}),
@@ -31,6 +44,9 @@ async def track_event(
         order_id=uuid.UUID(payload.order_id) if payload.order_id else None,
         payload=full_payload,
         platform_results={},
+        client_ip=client_ip,
+        geo_valid=geo.allowed,
+        geo_reason=geo.reason_code,
     )
     db.add(event)
     await db.commit()
