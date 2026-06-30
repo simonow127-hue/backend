@@ -24,7 +24,7 @@ def _build_purchase_event(order, event_source_url: str) -> dict:
             "client_user_agent": order.user_agent or "",
         },
         "custom_data": {
-            "currency": "MAD",
+            "currency": "SAR",
             "value": order.total_mad,
             "order_id": order.order_code,
         },

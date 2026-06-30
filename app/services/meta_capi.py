@@ -42,7 +42,7 @@ def _build_purchase_event(order, event_source_url: str) -> dict:
         "event_source_url": event_source_url,
         "user_data": user_data,
         "custom_data": {
-            "currency": "MAD",
+            "currency": "SAR",
             "value": order.total_mad,
             "content_type": "product",
             "contents": contents,

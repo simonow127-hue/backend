@@ -9,7 +9,7 @@ from app.services import sheets_direct
 
 logger = logging.getLogger("riads.sheets")
 
-_CASABLANCA = ZoneInfo("Africa/Casablanca")
+_RIYADH = ZoneInfo("Asia/Riyadh")
 
 
 def sheets_delivery_mode() -> str:
@@ -46,7 +46,7 @@ def _format_sheet_date(created_at) -> str:
         from datetime import timezone
 
         created_at = created_at.replace(tzinfo=timezone.utc)
-    local = created_at.astimezone(_CASABLANCA)
+    local = created_at.astimezone(_RIYADH)
     return local.strftime("%d/%m/%Y")
 
 
@@ -81,14 +81,14 @@ def build_sheet_payload(order) -> dict:
     return {
         "date": _format_sheet_date(order.created_at),
         "orderid": order.order_code or "",
-        "country": "Morocco",
+        "country": "Saudi Arabia",
         "name": order.customer_name or "",
         "phone": order.phone_raw or "",
         "product": product,
         "sku": sku,
         "quantity": quantity,
         "total_price": order.total_mad,
-        "currency": order.currency or "MAD",
+        "currency": order.currency or "SAR",
         "status": "",
     }
 

@@ -37,6 +37,7 @@ class SourcePayload(BaseModel):
     fbclid: Optional[str] = None
     ttclid: Optional[str] = None
     sc_click_id: Optional[str] = None
+    gclid: Optional[str] = None
 
 
 class TrackingPayload(BaseModel):

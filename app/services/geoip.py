@@ -90,7 +90,7 @@ def _evaluate_traits(
     *,
     for_metrics: bool,
 ) -> GeoCheckResult:
-    """Apply Morocco + VPN/tor/hosting rules from MaxMind traits."""
+    """Apply Saudi Arabia + VPN/tor/hosting rules from MaxMind traits."""
     allowed_countries = settings.allowed_countries_list
     if allowed_countries and country and country.upper() not in allowed_countries:
         return GeoCheckResult(
@@ -192,7 +192,7 @@ async def evaluate_traffic_ip(
     db: AsyncSession | None = None,
 ) -> GeoCheckResult:
     """
-    Strict geo check for analytics/metrics — Morocco only, no VPN/proxy/tor/hosting.
+    Strict geo check for analytics/metrics — Saudi Arabia only, no VPN/proxy/tor/hosting.
     Does not fail-open on lookup errors (unlike orders).
     Uses cache when db session is provided.
     """

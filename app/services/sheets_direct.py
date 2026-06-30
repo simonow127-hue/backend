@@ -53,7 +53,7 @@ def payload_to_row(payload: dict) -> list:
         payload.get("date", ""),
         payload.get("name", ""),
         payload.get("phone", ""),
-        payload.get("country", "Morocco"),
+        payload.get("country", "Saudi Arabia"),
         payload.get("sku", ""),
         payload.get("quantity", ""),
         payload.get("total_price", ""),

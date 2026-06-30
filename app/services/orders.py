@@ -63,7 +63,7 @@ async def create_order(
             status_code=422,
             detail={
                 "code": phone_result["error_code"],
-                "message_ar": "المرجو إدخال رقم هاتف مغربي صحيح",
+                "message_ar": "الرجاء إدخال رقم جوال سعودي صحيح — مثال: 0512345678",
             },
         )
 
@@ -81,7 +81,7 @@ async def create_order(
         customer_name=payload.customer.full_name,
         phone_raw=payload.customer.phone,
         phone_e164=phone_result["e164"],
-        phone_digits_meta_snap=phone_result["digits_ma"],
+        phone_digits_meta_snap=phone_result.get("digits_sa") or phone_result.get("digits_ma"),
         items=items_data,
         subtotal_mad=payload.totals.subtotal,
         shipping_mad=payload.totals.shipping,

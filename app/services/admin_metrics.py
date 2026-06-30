@@ -26,6 +26,8 @@ def _channel_label(source: dict | None) -> str:
         return "direct"
     if source.get("fbclid"):
         return "meta"
+    if source.get("gclid"):
+        return "google"
     if source.get("ttclid"):
         return "tiktok"
     if source.get("sc_click_id"):
