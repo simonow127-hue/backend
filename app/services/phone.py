@@ -16,7 +16,8 @@ def validate_and_normalize_saudi_phone(raw: str) -> dict:
 
     try:
         parsed = phonenumbers.parse(cleaned, "SA")
-        if phonenumbers.is_valid_number(parsed):
+        region = phonenumbers.region_code_for_number(parsed)
+        if phonenumbers.is_valid_number(parsed) and region == "SA":
             number_type = phonenumbers.number_type(parsed)
             if number_type in (PhoneNumberType.MOBILE, PhoneNumberType.FIXED_LINE_OR_MOBILE):
                 e164 = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
