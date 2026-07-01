@@ -36,14 +36,14 @@ async def sheets_test():
     payload = {
         "date": datetime.now(timezone.utc).strftime("%d/%m/%Y"),
         "orderid": orderid,
-        "country": "Morocco",
+        "country": "Saudi Arabia",
         "name": "Test Riads",
         "phone": "0600000000",
         "product": "Test product",
         "sku": "TEST-SKU",
         "quantity": "1",
         "total_price": 159,
-        "currency": "MAD",
+        "currency": "SAR",
         "status": "",
     }
     try:

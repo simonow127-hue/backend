@@ -23,7 +23,7 @@ class Order(Base):
     subtotal_mad: Mapped[int] = mapped_column(Integer, nullable=False)
     shipping_mad: Mapped[int] = mapped_column(Integer, default=0)
     total_mad: Mapped[int] = mapped_column(Integer, nullable=False)
-    currency: Mapped[str] = mapped_column(Text, default="MAD")
+    currency: Mapped[str] = mapped_column(Text, default="SAR")
 
     upsell_added: Mapped[bool] = mapped_column(Boolean, default=False)
     payment_method: Mapped[str] = mapped_column(Text, default="COD")

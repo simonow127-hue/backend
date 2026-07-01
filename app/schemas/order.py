@@ -23,7 +23,7 @@ class TotalsPayload(BaseModel):
     subtotal: int
     shipping: int = 0
     total: int
-    currency: str = "MAD"
+    currency: str = "SAR"
 
 
 class SourcePayload(BaseModel):

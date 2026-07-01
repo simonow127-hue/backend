@@ -38,7 +38,7 @@ def _build_purchase_event(order, page_url: str, referrer: str) -> dict:
         "event_id": order.event_id or str(order.id),
         "user": user,
         "properties": {
-            "currency": "MAD",
+            "currency": "SAR",
             "value": order.total_mad,
             "content_type": "product",
             "contents": contents,
