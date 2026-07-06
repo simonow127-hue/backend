@@ -4,6 +4,7 @@ import json
 import logging
 from functools import lru_cache
 
+import phonenumbers
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
@@ -25,6 +26,23 @@ def format_sheet_price(amount, currency: str = "SAR") -> str:
         return str(amount)
     code = (currency or "SAR").strip() or "SAR"
     return f"{value} {code}"
+
+
+def format_sheet_phone(phone_raw: str = "", phone_e164: str | None = None) -> str:
+    """Sheets treats +prefix as formula syntax — use national format without +."""
+    candidate = (phone_e164 or phone_raw or "").strip()
+    if not candidate:
+        return ""
+    try:
+        parsed = phonenumbers.parse(candidate, "SA")
+        if phonenumbers.is_valid_number(parsed):
+            return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.NATIONAL)
+    except phonenumbers.NumberParseException:
+        pass
+    text = candidate.replace(" ", "")
+    if text.startswith("+"):
+        text = text[1:]
+    return text
 
 
 def direct_sheets_ready() -> bool:
@@ -64,10 +82,14 @@ def payload_to_row(payload: dict) -> list:
     price = payload.get("total_price", "")
     if isinstance(price, (int, float)):
         price = format_sheet_price(price, payload.get("currency", "SAR"))
+    phone = format_sheet_phone(
+        str(payload.get("phone", "")),
+        str(payload.get("phone_e164", "") or "") or None,
+    )
     return [
         payload.get("date", ""),
         payload.get("name", ""),
-        payload.get("phone", ""),
+        phone,
         payload.get("country", "Saudi Arabia"),
         payload.get("sku", ""),
         payload.get("quantity", ""),

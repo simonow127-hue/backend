@@ -6,7 +6,7 @@ import httpx
 from app.catalog.products import catalog_entry
 from app.core.config import settings
 from app.services import sheets_direct
-from app.services.sheets_direct import format_sheet_price
+from app.services.sheets_direct import format_sheet_price, format_sheet_phone
 
 logger = logging.getLogger("riads.sheets")
 
@@ -84,7 +84,8 @@ def build_sheet_payload(order) -> dict:
         "orderid": order.order_code or "",
         "country": "Saudi Arabia",
         "name": order.customer_name or "",
-        "phone": order.phone_raw or "",
+        "phone": format_sheet_phone(order.phone_raw, order.phone_e164),
+        "phone_e164": order.phone_e164 or "",
         "product": product,
         "sku": sku,
         "quantity": quantity,
