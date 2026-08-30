@@ -33,6 +33,34 @@ PRODUCT_CATALOG: dict[str, dict[str, str]] = {
         "sku": "MP-FMER4W5JZBAG",
         "arabic_name": "شيلة سوداء فاخرة — إطلالة أنيقة كل يوم",
     },
+    "car-seat-cushion": {
+        "sku": "MP-CSCUSH7K2M9Q",
+        "arabic_name": "مسند ظهر شبكي — راحة ووضعية صحيحة",
+    },
+    "prostration-chair": {
+        "sku": "MP-5W1QBKIWM4SA",
+        "arabic_name": "كرسي السجود — راحة في الصلاة بدون مشقة",
+    },
+    "car-comfort-set": {
+        "sku": "MP-CCSET9P3L7VR",
+        "arabic_name": "طقم راحة السيارة — مخدة رقبة + مسند قطني",
+    },
+    "mens-hair-styler": {
+        "sku": "MP-MHSTYLE5Q8KD",
+        "arabic_name": "فرشاة تمليس للرجال — شعر ولحية بضغطة",
+    },
+    "wireless-car-charger": {
+        "sku": "MP-E33HQGSNW2SK",
+        "arabic_name": "شاحن سيارة لاسلكي — تثبيت وشحن بيد واحدة",
+    },
+    "indoor-wall-night-light": {
+        "sku": "MP-NVBT8SWPQKG7",
+        "arabic_name": "مصباح حائط ليلي خشبي — إضاءة دافئة وأنيقة",
+    },
+    "automatic-foam-dispenser": {
+        "sku": "MP-XPFILYWFPJI5",
+        "arabic_name": "موزع الصابون الرغوي الأوتوماتيكي — نظافة بدون لمس",
+    },
 }
 
 
