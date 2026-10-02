@@ -61,6 +61,10 @@ PRODUCT_CATALOG: dict[str, dict[str, str]] = {
         "sku": "MP-XPFILYWFPJI5",
         "arabic_name": "موزع الصابون الرغوي الأوتوماتيكي — نظافة بدون لمس",
     },
+    "disposable-toilet-brush-set": {
+    "sku": "MP-UGE66ZRAZOCG",
+    "arabic_name": "فرشاة تنظيف الحمام الكهربائية",
+},
 }
 
 
