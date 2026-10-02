@@ -262,3 +262,8 @@ async def send_order_to_sheets(
         )
 
         return False
+        logger.warning(
+    "DEBUG SHEETS ORDER %s ITEMS = %s",
+    order.order_code,
+    order.items,
+)
