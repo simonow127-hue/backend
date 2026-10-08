@@ -1,12 +1,13 @@
+```python
 from pydantic import BaseModel, Field
-from typing import Optional, List
-import uuid
+from typing import Optional, List, Literal
 
 
 class CustomerPayload(BaseModel):
     full_name: str = Field(..., min_length=3)
     phone: str
     phone_e164: Optional[str] = None
+    country: Literal["SA", "AE"]
 
 
 class CartItemPayload(BaseModel):
@@ -23,7 +24,7 @@ class TotalsPayload(BaseModel):
     subtotal: int
     shipping: int = 0
     total: int
-    currency: str = "SAR"
+    currency: Literal["SAR", "AED"] = "SAR"
 
 
 class SourcePayload(BaseModel):
@@ -86,3 +87,4 @@ class UpsellOrderResponse(BaseModel):
     order_id: str
     order_code: str
     new_total_mad: int
+```
