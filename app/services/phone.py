@@ -1,70 +1,180 @@
 import re
-import phonenumbers
-from phonenumbers import PhoneNumberType
+from typing import TypedDict, Literal
 
 
-SA_MOBILE_LOCAL = re.compile(r"^05\d{8}$")
-SA_MOBILE_INTL = re.compile(r"^(\+?966)5\d{8}$")
+PhoneCountry = Literal["SA", "AE", "MA"]
 
 
-def validate_and_normalize_saudi_phone(raw: str) -> dict:
+class PhoneResult(TypedDict, total=False):
+    is_valid: bool
+    e164: str
+    digits_sa: str
+    digits_ae: str
+    digits_ma: str
+    country: PhoneCountry
+    error_code: str
+
+
+def _digits(value: str) -> str:
+    return re.sub(r"\D", "", value or "")
+
+
+def validate_and_normalize_phone(
+    raw: str,
+    country: Literal["SA", "AE"],
+) -> PhoneResult:
     """
-    Validates a Saudi mobile phone number and returns normalized forms.
-    Returns dict with: e164, digits_sa (for Meta/Snap hashing), is_valid, error_code.
+    Validate and normalize Saudi or UAE mobile numbers.
+
+    SA:
+      05XXXXXXXX
+      5XXXXXXXX
+      9665XXXXXXXX
+      +9665XXXXXXXX
+
+    AE:
+      05XXXXXXXX
+      5XXXXXXXX
+      9715XXXXXXXX
+      +9715XXXXXXXX
     """
-    cleaned = raw.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
 
-    try:
-        parsed = phonenumbers.parse(cleaned, "SA")
-        region = phonenumbers.region_code_for_number(parsed)
-        if phonenumbers.is_valid_number(parsed) and region == "SA":
-            number_type = phonenumbers.number_type(parsed)
-            if number_type in (PhoneNumberType.MOBILE, PhoneNumberType.FIXED_LINE_OR_MOBILE):
-                e164 = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
-                digits_sa = e164.lstrip("+")
-                return {
-                    "is_valid": True,
-                    "e164": e164,
-                    "digits_sa": digits_sa,
-                    "error_code": None,
-                }
-    except phonenumbers.NumberParseException:
-        pass
+    if not raw or not raw.strip():
+        return {
+            "is_valid": False,
+            "error_code": "phone_empty",
+        }
 
-    # Fallback: accept 05XXXXXXXX (10 digits) — covers all SA operators incl. 057
-    if SA_MOBILE_LOCAL.match(cleaned):
-        digits = "966" + cleaned[1:]
+    digits = _digits(raw)
+
+    if country == "SA":
+        # Local Saudi: 05XXXXXXXX
+        if len(digits) == 10 and digits.startswith("05"):
+            national = digits[1:]  # 5XXXXXXXX
+            return {
+                "is_valid": True,
+                "e164": "+966" + national,
+                "digits_sa": national,
+                "country": "SA",
+            }
+
+        # Local without leading 0: 5XXXXXXXX
+        if len(digits) == 9 and digits.startswith("5"):
+            return {
+                "is_valid": True,
+                "e164": "+966" + digits,
+                "digits_sa": digits,
+                "country": "SA",
+            }
+
+        # International: 9665XXXXXXXX
+        if len(digits) == 12 and digits.startswith("9665"):
+            national = digits[3:]
+            return {
+                "is_valid": True,
+                "e164": "+" + digits,
+                "digits_sa": national,
+                "country": "SA",
+            }
+
+        return {
+            "is_valid": False,
+            "error_code": "invalid_saudi_phone",
+        }
+
+    if country == "AE":
+        # Local UAE: 05XXXXXXXX
+        if len(digits) == 10 and digits.startswith("05"):
+            national = digits[1:]  # 5XXXXXXXX
+            return {
+                "is_valid": True,
+                "e164": "+971" + national,
+                "digits_ae": national,
+                "country": "AE",
+            }
+
+        # Local without leading 0: 5XXXXXXXX
+        if len(digits) == 9 and digits.startswith("5"):
+            return {
+                "is_valid": True,
+                "e164": "+971" + digits,
+                "digits_ae": digits,
+                "country": "AE",
+            }
+
+        # International: 9715XXXXXXXX
+        if len(digits) == 12 and digits.startswith("9715"):
+            national = digits[3:]
+            return {
+                "is_valid": True,
+                "e164": "+" + digits,
+                "digits_ae": national,
+                "country": "AE",
+            }
+
+        return {
+            "is_valid": False,
+            "error_code": "invalid_uae_phone",
+        }
+
+    return {
+        "is_valid": False,
+        "error_code": "unsupported_country",
+    }
+
+
+# ---------------------------------------------------------
+# Morocco compatibility
+# ---------------------------------------------------------
+
+def validate_and_normalize_moroccan_phone(raw: str) -> PhoneResult:
+    """
+    Keep compatibility with the old Moroccan checkout/backend.
+    """
+
+    if not raw or not raw.strip():
+        return {
+            "is_valid": False,
+            "error_code": "phone_empty",
+        }
+
+    digits = _digits(raw)
+
+    # Morocco local: 06XXXXXXXX / 07XXXXXXXX
+    if len(digits) == 10 and digits.startswith(("06", "07")):
+        national = digits[1:]
+
+        return {
+            "is_valid": True,
+            "e164": "+212" + national,
+            "digits_ma": national,
+            "country": "MA",
+        }
+
+    # Morocco international: 2126XXXXXXXX / 2127XXXXXXXX
+    if len(digits) == 12 and digits.startswith(("2126", "2127")):
+        national = digits[3:]
+
         return {
             "is_valid": True,
             "e164": "+" + digits,
-            "digits_sa": digits,
-            "error_code": None,
+            "digits_ma": national,
+            "country": "MA",
         }
 
-    # Accept +9665XXXXXXXX or 9665XXXXXXXX
-    if SA_MOBILE_INTL.match(cleaned):
-        stripped = cleaned.lstrip("+")
-        if not stripped.startswith("966"):
-            stripped = "966" + stripped
-        return {
-            "is_valid": True,
-            "e164": "+" + stripped,
-            "digits_sa": stripped,
-            "error_code": None,
-        }
-
-    return _invalid("invalid_phone")
-
-
-# Backward-compatible alias
-validate_and_normalize_moroccan_phone = validate_and_normalize_saudi_phone
-
-
-def _invalid(code: str) -> dict:
     return {
         "is_valid": False,
-        "e164": None,
-        "digits_sa": None,
-        "digits_ma": None,
-        "error_code": code,
+        "error_code": "invalid_moroccan_phone",
     }
+
+
+# ---------------------------------------------------------
+# Backward compatibility
+# ---------------------------------------------------------
+
+def validate_and_normalize_saudi_phone(raw: str) -> PhoneResult:
+    return validate_and_normalize_phone(raw, "SA")
+
+
+def validate_and_normalize_uae_phone(raw: str) -> PhoneResult:
+    return validate_and_normalize_phone(raw, "AE")
