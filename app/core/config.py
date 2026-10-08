@@ -177,24 +177,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-```
-
-### ⚠️ مهم جداً
-
-إلا كان عندك فـ `.env`:
-
-```env
-ALLOWED_COUNTRIES=MA
-```
-
-خاصك تبدلو إلى:
-
-```env
-ALLOWED_COUNTRIES=SA,AE
-```
-
-حيت `.env` عندو الأولوية على القيمة الموجودة فـ `config.py`.
-
-ومن بعد **restart/redeploy للـ backend** باش `Settings()` يعاود يقرا القيمة الجديدة.
-
-دابا GeoIP ديالك غادي يسمح بـ **SA + AE**، والـ checkout/order backend عندو كذلك `country` و`currency` حسب التعديلات اللي درنا.
