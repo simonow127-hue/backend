@@ -26,17 +26,15 @@ async def health():
 
 @router.post("/health/sheets-test")
 async def sheets_test():
-    """Append one test row to Google Sheets."""
     if not direct_sheets_ready():
         return {
             "ok": False,
             "error": "Google Sheets direct integration is not configured",
         }
 
-    orderid = (
-        "riads-test-"
-        + datetime.now(timezone.utc).strftime("%H%M%S")
-    )
+    orderid = "riads-test-" + datetime.now(
+        timezone.utc
+    ).strftime("%H%M%S")
 
     payload = {
         "date": datetime.now(timezone.utc).strftime("%d/%m/%Y"),
