@@ -48,9 +48,8 @@ def validate_and_normalize_phone(
     digits = _digits(raw)
 
     if country == "SA":
-        # Local Saudi: 05XXXXXXXX
         if len(digits) == 10 and digits.startswith("05"):
-            national = digits[1:]  # 5XXXXXXXX
+            national = digits[1:]
             return {
                 "is_valid": True,
                 "e164": "+966" + national,
@@ -58,7 +57,6 @@ def validate_and_normalize_phone(
                 "country": "SA",
             }
 
-        # Local without leading 0: 5XXXXXXXX
         if len(digits) == 9 and digits.startswith("5"):
             return {
                 "is_valid": True,
@@ -67,7 +65,6 @@ def validate_and_normalize_phone(
                 "country": "SA",
             }
 
-        # International: 9665XXXXXXXX
         if len(digits) == 12 and digits.startswith("9665"):
             national = digits[3:]
             return {
@@ -83,9 +80,8 @@ def validate_and_normalize_phone(
         }
 
     if country == "AE":
-        # Local UAE: 05XXXXXXXX
         if len(digits) == 10 and digits.startswith("05"):
-            national = digits[1:]  # 5XXXXXXXX
+            national = digits[1:]
             return {
                 "is_valid": True,
                 "e164": "+971" + national,
@@ -93,7 +89,6 @@ def validate_and_normalize_phone(
                 "country": "AE",
             }
 
-        # Local without leading 0: 5XXXXXXXX
         if len(digits) == 9 and digits.startswith("5"):
             return {
                 "is_valid": True,
@@ -102,7 +97,6 @@ def validate_and_normalize_phone(
                 "country": "AE",
             }
 
-        # International: 9715XXXXXXXX
         if len(digits) == 12 and digits.startswith("9715"):
             national = digits[3:]
             return {
@@ -127,9 +121,17 @@ def validate_and_normalize_phone(
 # Morocco compatibility
 # ---------------------------------------------------------
 
-def validate_and_normalize_moroccan_phone(raw: str) -> PhoneResult:
+def validate_and_normalize_moroccan_phone(
+    raw: str,
+) -> PhoneResult:
     """
     Keep compatibility with the old Moroccan checkout/backend.
+
+    Supported formats:
+      06XXXXXXXX
+      07XXXXXXXX
+      2126XXXXXXXX
+      2127XXXXXXXX
     """
 
     if not raw or not raw.strip():
@@ -140,7 +142,6 @@ def validate_and_normalize_moroccan_phone(raw: str) -> PhoneResult:
 
     digits = _digits(raw)
 
-    # Morocco local: 06XXXXXXXX / 07XXXXXXXX
     if len(digits) == 10 and digits.startswith(("06", "07")):
         national = digits[1:]
 
@@ -151,7 +152,6 @@ def validate_and_normalize_moroccan_phone(raw: str) -> PhoneResult:
             "country": "MA",
         }
 
-    # Morocco international: 2126XXXXXXXX / 2127XXXXXXXX
     if len(digits) == 12 and digits.startswith(("2126", "2127")):
         national = digits[3:]
 
@@ -172,9 +172,13 @@ def validate_and_normalize_moroccan_phone(raw: str) -> PhoneResult:
 # Backward compatibility
 # ---------------------------------------------------------
 
-def validate_and_normalize_saudi_phone(raw: str) -> PhoneResult:
+def validate_and_normalize_saudi_phone(
+    raw: str,
+) -> PhoneResult:
     return validate_and_normalize_phone(raw, "SA")
 
 
-def validate_and_normalize_uae_phone(raw: str) -> PhoneResult:
+def validate_and_normalize_uae_phone(
+    raw: str,
+) -> PhoneResult:
     return validate_and_normalize_phone(raw, "AE")
