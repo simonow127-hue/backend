@@ -1,30 +1,35 @@
-```python
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List, Literal
 
 
+PhoneCountry = Literal["SA", "AE"]
+Currency = Literal["SAR", "AED"]
+
+
 class CustomerPayload(BaseModel):
-    full_name: str = Field(..., min_length=3)
-    phone: str
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    full_name: str = Field(..., min_length=3, max_length=150)
+    phone: str = Field(..., min_length=5, max_length=30)
     phone_e164: Optional[str] = None
-    country: Literal["SA", "AE"]
+    country: PhoneCountry
 
 
 class CartItemPayload(BaseModel):
-    product_id: str
-    slug: str
-    name: str
+    product_id: str = Field(..., min_length=1, max_length=100)
+    slug: str = Field(..., min_length=1, max_length=200)
+    name: str = Field(..., min_length=1, max_length=250)
     offer_pieces: int = Field(..., ge=1, le=3)
-    quantity: int = Field(default=1, ge=1)
-    unit_bundle_price: int
-    total: int
+    quantity: int = Field(default=1, ge=1, le=100)
+    unit_bundle_price: int = Field(..., ge=0)
+    total: int = Field(..., ge=0)
 
 
 class TotalsPayload(BaseModel):
-    subtotal: int
-    shipping: int = 0
-    total: int
-    currency: Literal["SAR", "AED"] = "SAR"
+    subtotal: int = Field(..., ge=0)
+    shipping: int = Field(default=0, ge=0)
+    total: int = Field(..., ge=0)
+    currency: Currency
 
 
 class SourcePayload(BaseModel):
@@ -51,7 +56,7 @@ class TrackingPayload(BaseModel):
 
 class CreateOrderRequest(BaseModel):
     customer: CustomerPayload
-    items: List[CartItemPayload]
+    items: List[CartItemPayload] = Field(..., min_length=1)
     totals: TotalsPayload
     source: Optional[SourcePayload] = None
     tracking: Optional[TrackingPayload] = None
@@ -59,8 +64,8 @@ class CreateOrderRequest(BaseModel):
 
 class UpsellRecommendation(BaseModel):
     recommended_product_id: str
-    offer_pieces: int
-    price_mad: int
+    offer_pieces: int = Field(..., ge=1, le=3)
+    price_mad: int = Field(..., ge=0)
 
 
 class CreateOrderResponse(BaseModel):
@@ -71,11 +76,11 @@ class CreateOrderResponse(BaseModel):
 
 
 class UpsellItemPayload(BaseModel):
-    product_id: str
-    slug: str
-    name: str
+    product_id: str = Field(..., min_length=1, max_length=100)
+    slug: str = Field(..., min_length=1, max_length=200)
+    name: str = Field(..., min_length=1, max_length=250)
     offer_pieces: int = Field(..., ge=1, le=3)
-    price_mad: int
+    price_mad: int = Field(..., ge=0)
 
 
 class UpsellOrderRequest(BaseModel):
@@ -87,4 +92,3 @@ class UpsellOrderResponse(BaseModel):
     order_id: str
     order_code: str
     new_total_mad: int
-```
