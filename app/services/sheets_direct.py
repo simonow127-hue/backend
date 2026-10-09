@@ -1,4 +1,3 @@
-```python
 import asyncio
 import base64
 import json
@@ -30,14 +29,6 @@ def format_sheet_price(
     amount,
     currency: str = "SAR",
 ) -> str:
-    """
-    Format price for Google Sheets.
-
-    Examples:
-        199 -> "199 SAR"
-        149 -> "149 AED"
-    """
-
     if amount is None or amount == "":
         return ""
 
@@ -47,7 +38,6 @@ def format_sheet_price(
         return str(amount)
 
     code = (currency or "SAR").strip().upper() or "SAR"
-
     return f"{value} {code}"
 
 
@@ -60,19 +50,12 @@ def format_sheet_phone(
     phone_e164: str | None = None,
     country: str = "SA",
 ) -> str:
-    """
-    Format customer phone number for Google Sheets.
-
-    Supported countries:
-        SA = Saudi Arabia
-        AE = United Arab Emirates
-        MA = Morocco
-    """
-
     candidate = (phone_e164 or phone_raw or "").strip()
 
     if not candidate:
         return ""
+
+    country_code = (country or "SA").strip().upper()
 
     region_map = {
         "SA": "SA",
@@ -80,14 +63,10 @@ def format_sheet_phone(
         "MA": "MA",
     }
 
-    country_code = (country or "SA").strip().upper()
     region = region_map.get(country_code, "SA")
 
     try:
-        parsed = phonenumbers.parse(
-            candidate,
-            region,
-        )
+        parsed = phonenumbers.parse(candidate, region)
 
         if phonenumbers.is_valid_number(parsed):
             return phonenumbers.format_number(
@@ -103,7 +82,6 @@ def format_sheet_phone(
             country_code,
         )
 
-    # Fallback
     text = candidate.replace(" ", "")
 
     if text.startswith("+"):
@@ -116,35 +94,31 @@ def format_sheet_phone(
 # GOOGLE SHEETS CONFIG
 # ============================================================
 
+def _get_setting(*names: str):
+    for name in names:
+        value = getattr(settings, name, None)
+        if value:
+            return value
+    return None
+
+
 def direct_sheets_ready() -> bool:
-    """
-    Check if direct Google Sheets integration is configured.
-    """
-
-    spreadsheet_id = getattr(
-        settings,
+    spreadsheet_id = _get_setting(
         "GOOGLE_SHEETS_SPREADSHEET_ID",
-        None,
     )
 
-    service_account_b64 = getattr(
-        settings,
+    service_account_b64 = _get_setting(
+        "GOOGLE_SERVICE_ACCOUNT_JSON_B64",
         "GOOGLE_SERVICE_ACCOUNT_B64",
-        None,
     )
 
-    service_account_json = getattr(
-        settings,
+    service_account_json = _get_setting(
         "GOOGLE_SERVICE_ACCOUNT_JSON",
-        None,
     )
 
     return bool(
         spreadsheet_id
-        and (
-            service_account_b64
-            or service_account_json
-        )
+        and (service_account_b64 or service_account_json)
     )
 
 
@@ -153,39 +127,22 @@ def direct_sheets_ready() -> bool:
 # ============================================================
 
 def _service_account_info() -> dict:
-    """
-    Load Google service account credentials.
-
-    Supports:
-        GOOGLE_SERVICE_ACCOUNT_B64
-        GOOGLE_SERVICE_ACCOUNT_JSON
-    """
-
-    b64_value = getattr(
-        settings,
+    b64_value = _get_setting(
+        "GOOGLE_SERVICE_ACCOUNT_JSON_B64",
         "GOOGLE_SERVICE_ACCOUNT_B64",
-        None,
     )
 
     if b64_value:
         try:
-            decoded = base64.b64decode(
-                b64_value
-            ).decode("utf-8")
-
+            decoded = base64.b64decode(b64_value).decode("utf-8")
             return json.loads(decoded)
-
         except Exception:
             logger.exception(
-                "Failed to decode GOOGLE_SERVICE_ACCOUNT_B64"
+                "Failed to decode Google service account base64 credentials"
             )
             raise
 
-    json_value = getattr(
-        settings,
-        "GOOGLE_SERVICE_ACCOUNT_JSON",
-        None,
-    )
+    json_value = _get_setting("GOOGLE_SERVICE_ACCOUNT_JSON")
 
     if json_value:
         if isinstance(json_value, dict):
@@ -193,7 +150,6 @@ def _service_account_info() -> dict:
 
         try:
             return json.loads(json_value)
-
         except Exception:
             logger.exception(
                 "Failed to parse GOOGLE_SERVICE_ACCOUNT_JSON"
@@ -211,17 +167,11 @@ def _service_account_info() -> dict:
 
 @lru_cache(maxsize=1)
 def _sheets_service():
-    """
-    Create and cache Google Sheets API client.
-    """
-
     info = _service_account_info()
 
-    credentials = (
-        service_account.Credentials.from_service_account_info(
-            info,
-            scopes=SCOPES,
-        )
+    credentials = service_account.Credentials.from_service_account_info(
+        info,
+        scopes=SCOPES,
     )
 
     return build(
@@ -237,114 +187,44 @@ def _sheets_service():
 # ============================================================
 
 def payload_to_row(payload: dict) -> list:
-    """
-    Convert order payload into one Google Sheets row.
-
-    Expected columns:
-
-        A = date
-        B = name
-        C = phone
-        D = country
-        E = sku
-        F = quantity
-        G = price
-        H = note
-    """
-
-    orderid = str(
-        payload.get("orderid", "")
-    ).strip()
-
-    product = str(
-        payload.get("product", "")
-    ).strip()
-
-    sku = str(
-        payload.get("sku", "")
-    ).strip()
-
-    # --------------------------------------------------------
-    # NOTE
-    # --------------------------------------------------------
+    orderid = str(payload.get("orderid", "")).strip()
+    product = str(payload.get("product", "")).strip()
+    sku = str(payload.get("sku", "")).strip()
 
     note = orderid
 
     if product:
-        if note:
-            note = f"{note} | {product}"
-        else:
-            note = product
+        note = f"{note} | {product}" if note else product
 
-    # --------------------------------------------------------
-    # PRICE
-    # --------------------------------------------------------
-
-    price = payload.get(
-        "total_price",
-        "",
-    )
+    price = payload.get("total_price", "")
 
     if isinstance(price, (int, float)):
         price = format_sheet_price(
             price,
-            payload.get(
-                "currency",
-                "SAR",
-            ),
+            payload.get("currency", "SAR"),
         )
 
-    # --------------------------------------------------------
-    # PHONE
-    # --------------------------------------------------------
+    country_code = str(
+        payload.get("country_code")
+        or payload.get("phone_country")
+        or "SA"
+    ).strip().upper()
 
     phone = format_sheet_phone(
-        phone_raw=str(
-            payload.get(
-                "phone",
-                "",
-            )
-        ),
+        phone_raw=str(payload.get("phone", "")),
         phone_e164=(
-            str(
-                payload.get(
-                    "phone_e164",
-                    "",
-                )
-            ).strip()
-            or None
+            str(payload.get("phone_e164", "")).strip() or None
         ),
-        country=str(
-            payload.get(
-                "country_code",
-                "SA",
-            )
-        ),
+        country=country_code,
     )
 
-    # --------------------------------------------------------
-    # ROW
-    # --------------------------------------------------------
-
     return [
-        payload.get(
-            "date",
-            "",
-        ),
-        payload.get(
-            "name",
-            "",
-        ),
+        payload.get("date", ""),
+        payload.get("name", ""),
         phone,
-        payload.get(
-            "country",
-            "Saudi Arabia",
-        ),
+        payload.get("country", "Saudi Arabia"),
         sku,
-        payload.get(
-            "quantity",
-            "",
-        ),
+        payload.get("quantity", ""),
         price,
         note,
     ]
@@ -354,27 +234,15 @@ def payload_to_row(payload: dict) -> list:
 # APPEND ROW
 # ============================================================
 
-async def append_order_row(
-    payload: dict,
-) -> bool:
-    """
-    Append one order row to Google Sheets.
-
-    Returns:
-        True  -> success
-        False -> failure / not configured
-    """
-
+async def append_order_row(payload: dict) -> bool:
     if not direct_sheets_ready():
         logger.warning(
             "Direct Google Sheets is not configured"
         )
         return False
 
-    spreadsheet_id = getattr(
-        settings,
+    spreadsheet_id = _get_setting(
         "GOOGLE_SHEETS_SPREADSHEET_ID",
-        None,
     )
 
     if not spreadsheet_id:
@@ -385,7 +253,6 @@ async def append_order_row(
 
     try:
         row = payload_to_row(payload)
-
         service = _sheets_service()
 
         def _append():
@@ -397,21 +264,17 @@ async def append_order_row(
                     range=SHEET_RANGE,
                     valueInputOption="USER_ENTERED",
                     insertDataOption="INSERT_ROWS",
-                    body={
-                        "values": [row],
-                    },
+                    body={"values": [row]},
                 )
                 .execute()
             )
 
-        result = await asyncio.to_thread(
-            _append
-        )
+        await asyncio.to_thread(_append)
 
         logger.info(
             "Google Sheets direct append success: order=%s country=%s currency=%s",
             payload.get("orderid"),
-            payload.get("country_code"),
+            payload.get("country_code") or payload.get("phone_country"),
             payload.get("currency"),
         )
 
@@ -422,23 +285,4 @@ async def append_order_row(
             "Google Sheets direct append failed: order=%s",
             payload.get("orderid"),
         )
-
         return False
-```
-بعد هاد الملف، خاصنا كذلك نتأكدو أن `sheets.py` كيبعث `country_code`، يعني داخل `build_sheet_payload()` يكون عندك:
-
-```python
-"country": country,
-"country_code": order.phone_country or "SA",
-"currency": currency,
-```
-
-وبهاد الشكل:
-
-- 🇸🇦 `SA` → الرقم يتفسر كسعودي + السعر `SAR`
-- 🇦🇪 `AE` → الرقم يتفسر كإماراتي + السعر `AED`
-- 🇲🇦 `MA` → يبقى مدعوم كذلك
-- Google Sheets غادي يستقبل الدولة والعملة الصحيحة.
-- ما تبدل حتى حاجة فـ Google credentials أو طريقة الـ append.
-
-**المهم:** قبل ما ندوزو لـ Meta CAPI، خاصنا نراجع `geoip.py` حيث إذا مازال كيسمح غير بـ Morocco، الإمارات والسعودية غادي يتبلوكاو حتى لو كل كود checkout صحيح.
