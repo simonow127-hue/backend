@@ -1,6 +1,6 @@
-```python
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -40,9 +40,6 @@ class Settings(BaseSettings):
         "1noCh6q_Q-G-fnFWUoPdiHJ7aVL-9r2BMdHTI2xrVl1I"
     )
 
-    # Option A (recommended):
-    # Service account JSON — share the Google Sheet
-    # with the service account email as Editor.
     GOOGLE_SERVICE_ACCOUNT_JSON: str = ""
     GOOGLE_SERVICE_ACCOUNT_JSON_B64: str = ""
 
@@ -94,7 +91,6 @@ class Settings(BaseSettings):
     # AE = United Arab Emirates
     ALLOWED_COUNTRIES: str = "SA,AE"
 
-    # Block suspicious traffic
     BLOCK_VPN: bool = True
     BLOCK_TOR: bool = True
     BLOCK_HOSTING: bool = True
@@ -109,10 +105,6 @@ class Settings(BaseSettings):
     # ============================================================
 
     IPQS_API_KEY: str = ""
-
-    # 0 = loose
-    # 1 = medium
-    # 2 = strict
     IPQS_STRICTNESS: int = 1
 
     # ============================================================
@@ -121,10 +113,7 @@ class Settings(BaseSettings):
 
     ADMIN_USERNAME: str = ""
     ADMIN_PASSWORD: str = ""
-
-    # Minimum 32 chars recommended in production
     ADMIN_SESSION_SECRET: str = ""
-
     ADMIN_TOKEN_TTL_HOURS: int = 24
 
     # ============================================================
@@ -151,21 +140,17 @@ class Settings(BaseSettings):
     def db_url_async(self) -> str:
         url = self.DATABASE_URL
 
-        # Convert postgres:// -> postgresql+asyncpg://
         if url.startswith("postgres://"):
             url = (
                 "postgresql+asyncpg://"
                 + url[len("postgres://"):]
             )
-
         elif url.startswith("postgresql://"):
             url = (
                 "postgresql+asyncpg://"
                 + url[len("postgresql://"):]
             )
 
-        # Remove sslmode parameter for asyncpg.
-        # SSL can be handled separately if needed.
         if "?sslmode=" in url:
             url = url.split("?sslmode=")[0]
 
@@ -173,7 +158,7 @@ class Settings(BaseSettings):
 
     @property
     def is_production(self) -> bool:
-        return self.APP_ENV == "production"
+        return self.APP_ENV.lower() == "production"
 
 
 settings = Settings()
