@@ -1,4 +1,3 @@
-```python
 import uuid
 import logging
 import asyncio
@@ -6,6 +5,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import update
+from fastapi import HTTPException
 
 from app.models.order import Order
 from app.schemas.order import CreateOrderRequest, UpsellItemPayload
@@ -23,7 +23,6 @@ UPSELL_MAP = {
     "naqaa": "nour",
 }
 
-
 UPSELL_PRICES = {
     1: 179,
     2: 299,
@@ -39,10 +38,14 @@ def _generate_order_code() -> str:
 
 
 def _compute_upsell(items: list) -> dict | None:
-    product_ids = {item.get("product_id") for item in items}
+    product_ids = {
+        item.get("product_id")
+        for item in items
+        if isinstance(item, dict) and item.get("product_id")
+    }
 
-    for pid in product_ids:
-        upsell_id = UPSELL_MAP.get(pid)
+    for product_id in product_ids:
+        upsell_id = UPSELL_MAP.get(product_id)
 
         if upsell_id and upsell_id not in product_ids:
             return {
@@ -55,10 +58,31 @@ def _compute_upsell(items: list) -> dict | None:
         return None
 
     return {
-        "recommended_product_id": list(product_ids)[0],
+        "recommended_product_id": next(iter(product_ids)),
         "offer_pieces": 2,
         "price_mad": UPSELL_PRICES[2],
     }
+
+
+def _get_phone_digits(phone_result: dict) -> str:
+    country_digit_keys = {
+        "SA": ("digits_sa",),
+        "AE": ("digits_ae",),
+        "MA": ("digits_ma",),
+    }
+
+    country = phone_result.get("country")
+    keys = country_digit_keys.get(
+        country,
+        ("digits_sa", "digits_ae", "digits_ma"),
+    )
+
+    for key in keys:
+        value = phone_result.get(key)
+        if value:
+            return str(value)
+
+    return ""
 
 
 async def create_order(
@@ -67,47 +91,11 @@ async def create_order(
     client_ip: str | None,
     user_agent: str | None,
 ) -> Order:
-
     # ---------------------------------------------------------
-    # Country + phone validation
-    # ---------------------------------------------------------
-
-    country = payload.customer.country
-
-    phone_result = validate_and_normalize_phone(
-        payload.customer.phone,
-        country,
-    )
-
-    if not phone_result["is_valid"]:
-        from fastapi import HTTPException
-
-        if country == "SA":
-            message_ar = (
-                "الرجاء إدخال رقم جوال سعودي صحيح — "
-                "مثال: 0512345678"
-            )
-        elif country == "AE":
-            message_ar = (
-                "الرجاء إدخال رقم جوال إماراتي صحيح — "
-                "مثال: 0501234567"
-            )
-        else:
-            message_ar = "الرجاء إدخال رقم جوال صحيح."
-
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "code": phone_result["error_code"],
-                "message_ar": message_ar,
-            },
-        )
-
-    # ---------------------------------------------------------
-    # Currency validation
+    # Country validation
     # ---------------------------------------------------------
 
-    currency = payload.totals.currency
+    country = (payload.customer.country or "").upper()
 
     expected_currency = {
         "SA": "SAR",
@@ -115,8 +103,6 @@ async def create_order(
     }.get(country)
 
     if expected_currency is None:
-        from fastapi import HTTPException
-
         raise HTTPException(
             status_code=422,
             detail={
@@ -125,16 +111,53 @@ async def create_order(
             },
         )
 
-    if currency != expected_currency:
-        from fastapi import HTTPException
+    # ---------------------------------------------------------
+    # Phone validation
+    # ---------------------------------------------------------
 
+    phone_result = validate_and_normalize_phone(
+        payload.customer.phone,
+        country,
+    )
+
+    if not phone_result.get("is_valid"):
+        if country == "SA":
+            message_ar = (
+                "الرجاء إدخال رقم جوال سعودي صحيح — "
+                "مثال: 0512345678"
+            )
+        else:
+            message_ar = (
+                "الرجاء إدخال رقم جوال إماراتي صحيح — "
+                "مثال: 0501234567"
+            )
+
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": phone_result.get(
+                    "error_code",
+                    "invalid_phone",
+                ),
+                "message_ar": message_ar,
+            },
+        )
+
+    # ---------------------------------------------------------
+    # Currency validation
+    # ---------------------------------------------------------
+
+    currency = (payload.totals.currency or "").upper()
+
+    if currency != expected_currency:
         raise HTTPException(
             status_code=422,
             detail={
                 "code": "currency_country_mismatch",
                 "message_ar": (
                     f"العملة غير صحيحة لهذه الدولة. "
-                    f"الدولة {country} يجب أن تستعمل {expected_currency}."
+                    f"الدولة {country} يجب أن تستعمل "
+                    f"{expected_currency}."
                 ),
             },
         )
@@ -157,13 +180,13 @@ async def create_order(
     ]
 
     source_data = (
-        payload.source.model_dump()
+        payload.source.model_dump(exclude_none=True)
         if payload.source
         else {}
     )
 
     tracking_data = (
-        payload.tracking.model_dump()
+        payload.tracking.model_dump(exclude_none=True)
         if payload.tracking
         else {}
     )
@@ -177,44 +200,32 @@ async def create_order(
     order = Order(
         order_code=order_code,
         status="new",
-
         customer_name=payload.customer.full_name,
         phone_raw=payload.customer.phone,
         phone_e164=phone_result["e164"],
-
-        # Important: store the selected country
         phone_country=country,
-
-        # Meta phone digits
-        phone_digits_meta_snap=(
-            phone_result.get("digits_sa")
-            or phone_result.get("digits_ae")
-            or phone_result.get("digits_ma")
-            or ""
-        ),
-
+        phone_digits_meta_snap=_get_phone_digits(phone_result),
         items=items_data,
-
         subtotal_mad=payload.totals.subtotal,
         shipping_mad=payload.totals.shipping,
         total_mad=payload.totals.total,
-
-        # SAR for Saudi / AED for UAE
         currency=currency,
-
         source=source_data,
         tracking=tracking_data,
-
         event_id=event_id,
-
         client_ip=client_ip,
         user_agent=user_agent,
     )
 
     db.add(order)
 
-    await db.commit()
-    await db.refresh(order)
+    try:
+        await db.commit()
+        await db.refresh(order)
+    except Exception:
+        await db.rollback()
+        logger.exception("Failed to create order")
+        raise
 
     logger.info(
         "Order created: %s country=%s currency=%s",
@@ -239,8 +250,8 @@ async def claim_and_push_sheet(
     force: bool = False,
 ) -> bool:
     """
-    Exactly one sheet write per order.
-    Upsell uses force=True to update the row.
+    Claim a normal sheet write once per order.
+    force=True allows an intentional row update, such as an upsell.
     """
 
     from app.core.database import AsyncSessionLocal
@@ -271,9 +282,20 @@ async def claim_and_push_sheet(
     order = await _load_order(order_id)
 
     if not order:
+        logger.error(
+            "Cannot push order %s to Sheets: order not found",
+            order_id,
+        )
         return False
 
-    ok = await sheets_service.send_order_to_sheets(order)
+    try:
+        ok = await sheets_service.send_order_to_sheets(order)
+    except Exception:
+        logger.exception(
+            "Sheets write raised an exception for order %s",
+            order_id,
+        )
+        ok = False
 
     async with AsyncSessionLocal() as db:
         order_obj = await db.get(Order, order_id)
@@ -282,7 +304,11 @@ async def claim_and_push_sheet(
             return ok
 
         if ok:
-            order_obj.status = "sent_to_sheet"
+            order_obj.status = (
+                "upsell_added"
+                if order_obj.upsell_added
+                else "sent_to_sheet"
+            )
 
             if not order_obj.sheet_sent_at:
                 order_obj.sheet_sent_at = datetime.now(timezone.utc)
@@ -300,7 +326,7 @@ async def run_order_side_effects(
     order_id: uuid.UUID,
 ) -> None:
     """
-    Sheets once (locked), then ad platform events.
+    Push the order to Sheets, then send purchase events to ad platforms.
     """
 
     order = await _load_order(order_id)
@@ -321,11 +347,9 @@ async def run_order_side_effects(
         or settings.FRONTEND_URL
     )
 
-    thank_you_url = (
-        f"{settings.FRONTEND_URL}/thank-you"
-    )
+    thank_you_url = f"{settings.FRONTEND_URL.rstrip('/')}/thank-you"
 
-    await asyncio.gather(
+    results = await asyncio.gather(
         meta_capi.send_purchase_event(
             order,
             event_source_url=landing_url,
@@ -342,19 +366,32 @@ async def run_order_side_effects(
         return_exceptions=True,
     )
 
+    platform_names = ("Meta", "TikTok", "Snapchat")
+
+    for platform, result in zip(platform_names, results):
+        if isinstance(result, Exception):
+            logger.error(
+                "%s purchase event failed for order %s: %s",
+                platform,
+                order.order_code,
+                result,
+            )
+
 
 async def apply_upsell(
     db: AsyncSession,
     order_id: str,
     upsell_item: UpsellItemPayload,
 ) -> Order:
+    try:
+        parsed_order_id = uuid.UUID(order_id)
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_order_id"},
+        )
 
-    from fastapi import HTTPException
-
-    order = await db.get(
-        Order,
-        uuid.UUID(order_id),
-    )
+    order = await db.get(Order, parsed_order_id)
 
     if not order:
         raise HTTPException(
@@ -368,6 +405,12 @@ async def apply_upsell(
             detail={"code": "upsell_already_applied"},
         )
 
+    if upsell_item.price_mad <= 0:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_upsell_price"},
+        )
+
     current_items = (
         list(order.items)
         if isinstance(order.items, list)
@@ -375,34 +418,32 @@ async def apply_upsell(
     )
 
     upsell_data = upsell_item.model_dump()
-
     upsell_data["total"] = upsell_item.price_mad
 
     current_items.append(upsell_data)
 
     order.items = current_items
-
-    order.total_mad = (
-        order.total_mad
-        + upsell_item.price_mad
-    )
-
-    order.subtotal_mad = (
-        order.subtotal_mad
-        + upsell_item.price_mad
-    )
-
+    order.total_mad = order.total_mad + upsell_item.price_mad
+    order.subtotal_mad = order.subtotal_mad + upsell_item.price_mad
     order.upsell_added = True
     order.status = "upsell_added"
 
-    await db.commit()
-    await db.refresh(order)
+    try:
+        await db.commit()
+        await db.refresh(order)
+    except Exception:
+        await db.rollback()
+        logger.exception(
+            "Failed to apply upsell to order %s",
+            order_id,
+        )
+        raise
 
     logger.info(
-        "Upsell applied to order %s, new total: %s",
+        "Upsell applied to order %s, new total: %s %s",
         order.order_code,
         order.total_mad,
+        order.currency,
     )
 
     return order
-```
