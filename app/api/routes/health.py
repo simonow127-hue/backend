@@ -1,13 +1,12 @@
+
 from datetime import datetime, timezone
 
 from fastapi import APIRouter
 
 from app.core.config import settings
 from app.services.sheets import (
-    sheets_configured,
-    sheets_delivery_mode,
-    sheets_webhook_ready,
-    _post_to_webhook,
+    direct_sheets_ready,
+    append_order_row,
 )
 
 router = APIRouter()
@@ -19,26 +18,34 @@ async def health():
         "ok": True,
         "service": settings.APP_NAME,
         "env": settings.APP_ENV,
-        "sheets_webhook_enabled": settings.ENABLE_SHEETS_WEBHOOK,
-        "sheets_configured": sheets_configured(),
-        "sheets_mode": sheets_delivery_mode(),
+        "sheets_configured": direct_sheets_ready(),
+        "sheets_mode": "direct",
         "spreadsheet_id": settings.GOOGLE_SHEETS_SPREADSHEET_ID,
     }
 
 
 @router.post("/health/sheets-test")
 async def sheets_test():
-    """Send one test row to Google Sheets (delete row with orderid riads-test-* after)."""
-    if not sheets_webhook_ready():
-        return {"ok": False, "error": "GOOGLE_SHEETS_WEBHOOK_URL not set"}
+    """Append one test row to Google Sheets."""
+    if not direct_sheets_ready():
+        return {
+            "ok": False,
+            "error": "Google Sheets direct integration is not configured",
+        }
 
-    orderid = f"riads-test-{datetime.now(timezone.utc).strftime('%H%M%S')}"
+    orderid = (
+        "riads-test-"
+        + datetime.now(timezone.utc).strftime("%H%M%S")
+    )
+
     payload = {
         "date": datetime.now(timezone.utc).strftime("%d/%m/%Y"),
         "orderid": orderid,
         "country": "Saudi Arabia",
+        "country_code": "SA",
         "name": "Test Riads",
-        "phone": "0600000000",
+        "phone": "0500000000",
+        "phone_e164": "+966500000000",
         "product": "Test product",
         "sku": "TEST-SKU",
         "quantity": "1",
@@ -46,8 +53,23 @@ async def sheets_test():
         "currency": "SAR",
         "status": "",
     }
+
     try:
-        result = await _post_to_webhook(payload)
-        return {"ok": True, "orderid": orderid, "result": result}
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        success = await append_order_row(payload)
+
+        if not success:
+            return {
+                "ok": False,
+                "error": "Google Sheets append failed; check backend logs",
+            }
+
+        return {
+            "ok": True,
+            "orderid": orderid,
+        }
+
+    except Exception:
+        return {
+            "ok": False,
+            "error": "Google Sheets test failed; check backend logs",
+        }
