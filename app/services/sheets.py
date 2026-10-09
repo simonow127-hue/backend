@@ -1,4 +1,3 @@
-```python
 def build_sheet_payload(order) -> dict:
     items = (
         order.items
@@ -14,39 +13,42 @@ def build_sheet_payload(order) -> dict:
         "MA": "Morocco",
     }
 
-    country = country_names.get(
-        order.phone_country,
-        order.phone_country or "Saudi Arabia",
+    country_code = (
+        getattr(order, "phone_country", None)
+        or getattr(order, "country", None)
+        or "SA"
     )
 
-    currency = order.currency or "SAR"
+    country = country_names.get(
+        country_code,
+        country_code or "Saudi Arabia",
+    )
+
+    currency = getattr(order, "currency", None) or "SAR"
+
+    total_price = getattr(order, "total_price", None)
+    if total_price is None:
+        total_price = getattr(order, "total_mad", 0)
 
     return {
         "date": _format_sheet_date(order.created_at),
         "orderid": order.order_code or "",
-
-        # Dynamic country
         "country": country,
-
+        "country_code": country_code,
         "name": order.customer_name or "",
-
         "phone": format_sheet_phone(
             order.phone_raw,
             order.phone_e164,
+            country_code,
         ),
-
         "phone_e164": order.phone_e164 or "",
-
         "product": product,
         "sku": sku,
         "quantity": quantity,
-
         "total_price": format_sheet_price(
-            order.total_mad,
+            total_price,
             currency,
         ),
-
         "currency": currency,
         "status": "",
     }
-```
