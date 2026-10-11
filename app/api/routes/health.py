@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter
 
 from app.core.config import settings
-from app.services.sheets import (
+from app.services.sheets_direct import (
     direct_sheets_ready,
     append_order_row,
 )
@@ -32,12 +32,11 @@ async def sheets_test():
             "error": "Google Sheets direct integration is not configured",
         }
 
-    orderid = "riads-test-" + datetime.now(
-        timezone.utc
-    ).strftime("%H%M%S")
+    now = datetime.now(timezone.utc)
+    orderid = "riads-test-" + now.strftime("%H%M%S")
 
     payload = {
-        "date": datetime.now(timezone.utc).strftime("%d/%m/%Y"),
+        "date": now.strftime("%d/%m/%Y"),
         "orderid": orderid,
         "country": "Saudi Arabia",
         "country_code": "SA",
