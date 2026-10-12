@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import binascii
 import json
 import logging
 from functools import lru_cache
@@ -22,6 +23,43 @@ SHEET_RANGE = "A:H"
 
 
 # ============================================================
+# SETTINGS
+# ============================================================
+
+def _get_setting(*names: str):
+    for name in names:
+        value = getattr(settings, name, None)
+
+        if value is not None and value != "":
+            return value
+
+    return None
+
+
+def direct_sheets_ready() -> bool:
+    spreadsheet_id = _get_setting(
+        "GOOGLE_SHEETS_SPREADSHEET_ID",
+    )
+
+    service_account_b64 = _get_setting(
+        "GOOGLE_SERVICE_ACCOUNT_JSON_B64",
+        "GOOGLE_SERVICE_ACCOUNT_B64",
+    )
+
+    service_account_json = _get_setting(
+        "GOOGLE_SERVICE_ACCOUNT_JSON",
+    )
+
+    return bool(
+        spreadsheet_id
+        and (
+            service_account_b64
+            or service_account_json
+        )
+    )
+
+
+# ============================================================
 # PRICE
 # ============================================================
 
@@ -38,6 +76,7 @@ def format_sheet_price(
         return str(amount)
 
     code = (currency or "SAR").strip().upper() or "SAR"
+
     return f"{value} {code}"
 
 
@@ -76,9 +115,10 @@ def format_sheet_phone(
 
     except NumberParseException:
         pass
+
     except Exception:
         logger.exception(
-            "Unexpected error while formatting phone: country=%s",
+            "Unexpected phone formatting error: country=%s",
             country_code,
         )
 
@@ -91,39 +131,7 @@ def format_sheet_phone(
 
 
 # ============================================================
-# GOOGLE SHEETS CONFIG
-# ============================================================
-
-def _get_setting(*names: str):
-    for name in names:
-        value = getattr(settings, name, None)
-        if value:
-            return value
-    return None
-
-
-def direct_sheets_ready() -> bool:
-    spreadsheet_id = _get_setting(
-        "GOOGLE_SHEETS_SPREADSHEET_ID",
-    )
-
-    service_account_b64 = _get_setting(
-        "GOOGLE_SERVICE_ACCOUNT_JSON_B64",
-        "GOOGLE_SERVICE_ACCOUNT_B64",
-    )
-
-    service_account_json = _get_setting(
-        "GOOGLE_SERVICE_ACCOUNT_JSON",
-    )
-
-    return bool(
-        spreadsheet_id
-        and (service_account_b64 or service_account_json)
-    )
-
-
-# ============================================================
-# SERVICE ACCOUNT
+# SERVICE ACCOUNT CREDENTIALS
 # ============================================================
 
 def _service_account_info() -> dict:
@@ -134,25 +142,52 @@ def _service_account_info() -> dict:
 
     if b64_value:
         try:
-            decoded = base64.b64decode(b64_value).decode("utf-8")
-            return json.loads(decoded)
-        except Exception:
+            decoded = base64.b64decode(
+                b64_value,
+                validate=True,
+            ).decode("utf-8")
+
+            info = json.loads(decoded)
+
+            if not isinstance(info, dict):
+                raise ValueError(
+                    "Service account credentials must be a JSON object"
+                )
+
+            return info
+
+        except (
+            binascii.Error,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            ValueError,
+        ):
             logger.exception(
-                "Failed to decode Google service account base64 credentials"
+                "Invalid Google service account base64 credentials"
             )
             raise
 
-    json_value = _get_setting("GOOGLE_SERVICE_ACCOUNT_JSON")
+    json_value = _get_setting(
+        "GOOGLE_SERVICE_ACCOUNT_JSON",
+    )
 
     if json_value:
-        if isinstance(json_value, dict):
-            return json_value
-
         try:
-            return json.loads(json_value)
-        except Exception:
+            if isinstance(json_value, dict):
+                info = json_value
+            else:
+                info = json.loads(json_value)
+
+            if not isinstance(info, dict):
+                raise ValueError(
+                    "Service account credentials must be a JSON object"
+                )
+
+            return info
+
+        except (json.JSONDecodeError, ValueError):
             logger.exception(
-                "Failed to parse GOOGLE_SERVICE_ACCOUNT_JSON"
+                "Invalid GOOGLE_SERVICE_ACCOUNT_JSON"
             )
             raise
 
@@ -183,7 +218,7 @@ def _sheets_service():
 
 
 # ============================================================
-# PAYLOAD -> SHEET ROW
+# PAYLOAD TO SHEET ROW
 # ============================================================
 
 def payload_to_row(payload: dict) -> list:
@@ -210,6 +245,17 @@ def payload_to_row(payload: dict) -> list:
         or "SA"
     ).strip().upper()
 
+    country_names = {
+        "SA": "Saudi Arabia",
+        "AE": "United Arab Emirates",
+        "MA": "Morocco",
+    }
+
+    country_name = (
+        payload.get("country")
+        or country_names.get(country_code, "Saudi Arabia")
+    )
+
     phone = format_sheet_phone(
         phone_raw=str(payload.get("phone", "")),
         phone_e164=(
@@ -222,7 +268,7 @@ def payload_to_row(payload: dict) -> list:
         payload.get("date", ""),
         payload.get("name", ""),
         phone,
-        payload.get("country", "Saudi Arabia"),
+        country_name,
         sku,
         payload.get("quantity", ""),
         price,
@@ -231,25 +277,20 @@ def payload_to_row(payload: dict) -> list:
 
 
 # ============================================================
-# APPEND ROW
+# APPEND ORDER ROW
 # ============================================================
 
 async def append_order_row(payload: dict) -> bool:
     if not direct_sheets_ready():
         logger.warning(
-            "Direct Google Sheets is not configured"
+            "Direct Google Sheets is not configured. "
+            "Check spreadsheet ID and service account credentials."
         )
         return False
 
     spreadsheet_id = _get_setting(
         "GOOGLE_SHEETS_SPREADSHEET_ID",
     )
-
-    if not spreadsheet_id:
-        logger.warning(
-            "GOOGLE_SHEETS_SPREADSHEET_ID is missing"
-        )
-        return False
 
     try:
         row = payload_to_row(payload)
@@ -269,20 +310,19 @@ async def append_order_row(payload: dict) -> bool:
                 .execute()
             )
 
-        await asyncio.to_thread(_append)
+        result = await asyncio.to_thread(_append)
 
         logger.info(
-            "Google Sheets direct append success: order=%s country=%s currency=%s",
+            "Google Sheets append success: order=%s updatedRange=%s",
             payload.get("orderid"),
-            payload.get("country_code") or payload.get("phone_country"),
-            payload.get("currency"),
+            result.get("updates", {}).get("updatedRange", ""),
         )
 
         return True
 
     except Exception:
         logger.exception(
-            "Google Sheets direct append failed: order=%s",
+            "Google Sheets append failed: order=%s",
             payload.get("orderid"),
         )
         return False
