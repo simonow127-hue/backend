@@ -218,6 +218,81 @@ def _sheets_service():
 
 
 # ============================================================
+# ORDER TO SHEET PAYLOAD
+# ============================================================
+
+def build_sheet_payload(order) -> dict:
+    items = (
+        order.items
+        if isinstance(order.items, list)
+        else []
+    )
+
+    product_names = []
+    skus = []
+    total_quantity = 0
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+
+        name = str(item.get("name") or "").strip()
+        sku = str(item.get("sku") or "").strip()
+
+        if name and name not in product_names:
+            product_names.append(name)
+
+        if sku and sku not in skus:
+            skus.append(sku)
+
+        quantity = item.get("quantity", 1)
+
+        try:
+            total_quantity += int(quantity or 1)
+        except (TypeError, ValueError):
+            total_quantity += 1
+
+    country_code = str(
+        getattr(order, "phone_country", None) or "SA"
+    ).strip().upper()
+
+    country_names = {
+        "SA": "Saudi Arabia",
+        "AE": "United Arab Emirates",
+        "MA": "Morocco",
+    }
+
+    currency = str(
+        getattr(order, "currency", None) or "SAR"
+    ).strip().upper()
+
+    created_at = getattr(order, "created_at", None)
+
+    if created_at:
+        date_value = created_at.strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        date_value = ""
+
+    return {
+        "date": date_value,
+        "name": getattr(order, "customer_name", "") or "",
+        "phone": getattr(order, "phone_raw", "") or "",
+        "phone_e164": getattr(order, "phone_e164", "") or "",
+        "country_code": country_code,
+        "country": country_names.get(country_code, country_code),
+        "phone_country": country_code,
+        "sku": ", ".join(skus),
+        "product": ", ".join(product_names),
+        "quantity": total_quantity,
+        "total_price": getattr(order, "total_mad", ""),
+        "currency": currency,
+        "orderid": getattr(order, "order_code", "") or str(
+            getattr(order, "id", "")
+        ),
+    }
+
+
+# ============================================================
 # PAYLOAD TO SHEET ROW
 # ============================================================
 
