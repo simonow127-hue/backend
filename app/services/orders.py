@@ -10,7 +10,10 @@ from fastapi import HTTPException
 from app.models.order import Order
 from app.schemas.order import CreateOrderRequest, UpsellItemPayload
 from app.services.phone import validate_and_normalize_phone
-from app.services import sheets as sheets_service
+from app.services.sheets_direct import (
+    append_order_row,
+    build_sheet_payload,
+)
 from app.services import meta_capi, tiktok_events, snapchat_capi
 from app.core.config import settings
 
@@ -91,10 +94,6 @@ async def create_order(
     client_ip: str | None,
     user_agent: str | None,
 ) -> Order:
-    # ---------------------------------------------------------
-    # Country validation
-    # ---------------------------------------------------------
-
     country = (payload.customer.country or "").upper()
 
     expected_currency = {
@@ -110,10 +109,6 @@ async def create_order(
                 "message_ar": "الدولة غير مدعومة حالياً.",
             },
         )
-
-    # ---------------------------------------------------------
-    # Phone validation
-    # ---------------------------------------------------------
 
     phone_result = validate_and_normalize_phone(
         payload.customer.phone,
@@ -143,10 +138,6 @@ async def create_order(
             },
         )
 
-    # ---------------------------------------------------------
-    # Currency validation
-    # ---------------------------------------------------------
-
     currency = (payload.totals.currency or "").upper()
 
     if currency != expected_currency:
@@ -161,10 +152,6 @@ async def create_order(
                 ),
             },
         )
-
-    # ---------------------------------------------------------
-    # Order data
-    # ---------------------------------------------------------
 
     order_code = _generate_order_code()
 
@@ -192,10 +179,6 @@ async def create_order(
     )
 
     tracking_data["event_id"] = event_id
-
-    # ---------------------------------------------------------
-    # Create database order
-    # ---------------------------------------------------------
 
     order = Order(
         order_code=order_code,
@@ -289,7 +272,8 @@ async def claim_and_push_sheet(
         return False
 
     try:
-        ok = await sheets_service.send_order_to_sheets(order)
+        sheet_payload = build_sheet_payload(order)
+        ok = await append_order_row(sheet_payload)
     except Exception:
         logger.exception(
             "Sheets write raised an exception for order %s",
