@@ -18,6 +18,7 @@ class CustomerPayload(BaseModel):
 class CartItemPayload(BaseModel):
     product_id: str = Field(..., min_length=1, max_length=100)
     slug: str = Field(..., min_length=1, max_length=200)
+    sku: Optional[str] = Field(default=None, max_length=100)
     name: str = Field(..., min_length=1, max_length=250)
     offer_pieces: int = Field(..., ge=1, le=3)
     quantity: int = Field(default=1, ge=1, le=100)
